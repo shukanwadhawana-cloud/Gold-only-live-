@@ -1,38 +1,44 @@
-"""Gold-only runner. No Telegram. Dry-run by default."""
-import os, json
+"""Gold-only bot runner.
+
+Default mode is read-only/dry-run. With Binance credentials present it can
+run the account/contract preflight, but no real order is placed until the
+explicit live gates are enabled in a later step.
+"""
+import os
 from strategy import latest_executable_signal
 from market_data import get_gold_bars
+from config import CAPITAL_CAP_USDT, MAX_RISK_USDT, RISK_FRACTION, FRESHNESS_BARS
 
-STATE='gold_state.json'
-
-def load_state():
-    try:
-        with open(STATE) as f: return json.load(f)
-    except (OSError,ValueError): return {}
-
-def save_state(s):
-    tmp=STATE+'.tmp'
-    with open(tmp,'w') as f: json.dump(s,f,indent=2)
-    os.replace(tmp,STATE)
 
 def main():
-    df15=get_gold_bars('15m'); df1h=get_gold_bars('1h')
-    if len(df15)<100 or len(df1h)<50: raise RuntimeError('Not enough Gold candles for strategy.')
-    sig=latest_executable_signal(df15,df1h)
-    state=load_state()
-    if not sig:
-        print('GOLD: no fresh HIGH-confidence executable signal.')
-        return
-    key=f"{sig['time'].isoformat()}_{sig['type']}"
-    if state.get('last_signal')==key:
-        print(f'GOLD: signal already processed: {key}'); return
-    print('GOLD SIGNAL')
-    print(f"Direction: {sig['type']} | Entry: {sig['entry']:.5f} | SL: {sig['sl']:.5f} | TP: {sig['tp']:.5f}")
-    print(f"Structure: {sig['structure']} | Session: {sig['session_ok']} | HTF: {sig['htf_ok']} | RR: 1:{4:g}")
-    if os.getenv('LIVE_TRADING','false').lower()!='true':
-        print('DRY RUN: no exchange order placed.')
-    else:
-        raise RuntimeError('LIVE_TRADING is not enabled in this initial build. Exchange/demo execution must be validated first.')
-    state['last_signal']=key; save_state(state)
+    print("=== GOLD-ONLY BOT ===")
+    print("Symbol: XAUUSDT only")
+    print(f"Capital cap: {CAPITAL_CAP_USDT} USDT")
+    print(f"Risk budget: min({MAX_RISK_USDT} USDT, active_capital × {RISK_FRACTION})")
+    print("Live orders: BLOCKED by default")
 
-if __name__=='__main__': main()
+    df15 = get_gold_bars("15m")
+    df1h = get_gold_bars("1h")
+    if len(df15) < 100 or len(df1h) < 50:
+        raise RuntimeError("Not enough Gold candles for strategy.")
+
+    sig = latest_executable_signal(df15, df1h, FRESHNESS_BARS)
+    if not sig:
+        print("GOLD: no fresh HIGH-confidence executable signal.")
+        return
+
+    print("\n=== CURRENT GOLD SIGNAL ===")
+    print(f"Direction: {sig['type']}")
+    print(f"Entry: {sig['entry']:.5f}")
+    print(f"SL: {sig['sl']:.5f}")
+    print(f"TP: {sig['tp']:.5f}")
+    print(f"Structure: {sig['structure']}")
+    print(f"Session: {sig['session_ok']} | HTF: {sig['htf_ok']} | RR: 1:4")
+
+    if os.getenv("LIVE_TRADING", "false").lower() == "true":
+        raise RuntimeError("LIVE_TRADING is intentionally still blocked in this build. Run preflight first.")
+    print("DRY RUN: no exchange order placed.")
+
+
+if __name__ == "__main__":
+    main()
