@@ -1,0 +1,14 @@
+name: Exchange Gold discovery (read only)
+on:
+  workflow_dispatch:
+  push:
+    paths: ['validate_exchange.py']
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: pip install -r requirements.txt
+      - run: python validate_exchange.py
