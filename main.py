@@ -15,5 +15,18 @@ os.environ["VOROA_PAPER_ONLY"] = "true"
 from paper_runtime import run
 
 
+def app(environ, start_response):
+    """Read-only deployment health endpoint; never starts the trading loop."""
+    body = b"gold-only-live paper worker: deployment healthy; worker not running on Vercel\\n"
+    start_response(
+        "200 OK",
+        [
+            ("Content-Type", "text/plain; charset=utf-8"),
+            ("Content-Length", str(len(body))),
+        ],
+    )
+    return [body]
+
+
 if __name__ == "__main__":
     run()
