@@ -11,7 +11,7 @@ from decimal import Decimal
 
 from config import CAPITAL_CAP_USDT, MAX_RISK_USDT, RISK_FRACTION, FRESHNESS_BARS
 from market_data import get_gold_bars
-from paper_state import audit, load_state, save_state
+from paper_state import audit, load_state, reconcile_trade_stats, save_state
 from strategy import latest_executable_signal
 
 POLL_SECONDS = 60
@@ -124,6 +124,7 @@ def run() -> None:
     print(f"Poll interval: {POLL_SECONDS}s", flush=True)
 
     state = load_state()
+    state = reconcile_trade_stats(state)
     if d(state.get("equity_usdt", "0")) <= ZERO:
         state["equity_usdt"] = str(CAPITAL_CAP_USDT)
     save_state(state)
@@ -243,6 +244,7 @@ def run() -> None:
                         "structure": signal["structure"],
                         "mae_r": "0",
                         "mfe_r": "0",
+                        "trade_id": key,
                     }
                     state["last_signal_key"] = key
                     print(f"PAPER ENTRY: {signal['type']} | bar={signal['time']} | entry={money(entry)} SL={money(sl)} TP={money(tp)} | theoretical_qty={qty:.8f} units | structure={signal['structure']}", flush=True)
@@ -250,7 +252,14 @@ def run() -> None:
                     save_state(state)
 
             status = "OPEN" if state.get("open_position") else "FLAT"
-            print(f"CYCLE {cycle}: bar={bar_time} close={money(current_price)} | status={status} | equity={money(d(state['equity_usdt']))} | trades={state['trades']} wins={state['wins']} losses={state['losses']} | fresh_high_signal={'YES' if signal else 'NO'}", flush=True)
+            print(
+                f"CYCLE {cycle}: bar={bar_time} close={money(current_price)} | status={status} | "
+                f"equity={money(d(state['equity_usdt']))} | closed={state['trades']} "
+                f"wins={state['wins']} losses={state['losses']} breakeven={state.get('breakevens', 0)} "
+                f"open={1 if state.get('open_position') else 0} | "
+                f"fresh_high_signal={'YES' if signal else 'NO'}",
+                flush=True,
+            )
             save_state(state)
         except Exception as exc:
             print(f"CYCLE {cycle}: DATA/STRATEGY ERROR: {type(exc).__name__}: {exc}", flush=True)
