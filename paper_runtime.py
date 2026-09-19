@@ -16,6 +16,29 @@ from strategy import latest_executable_signal
 
 POLL_SECONDS = 60
 ZERO = Decimal("0")
+TIMEFRAME_SECONDS = 15 * 60
+STALE_BAR_MULTIPLIER = 3
+
+
+def gold_market_closed(now) -> bool:
+    """Return True during normal CME Gold weekend/daily maintenance windows."""
+    weekday = now.weekday()
+    utc_minutes = now.hour * 60 + now.minute
+    if weekday == 5:  # Saturday
+        return True
+    if weekday == 6 and utc_minutes < 22 * 60:  # Sunday before reopen
+        return True
+    if weekday == 4 and utc_minutes >= 21 * 60:  # Friday after close
+        return True
+    if weekday in (0, 1, 2, 3) and 21 * 60 <= utc_minutes < 22 * 60:
+        return True
+    return False
+
+
+def stale_bar(bar_time, now) -> bool:
+    """Fail closed when the completed candle is not advancing during open hours."""
+    age_seconds = max(0.0, (now - bar_time).total_seconds())
+    return age_seconds > TIMEFRAME_SECONDS * STALE_BAR_MULTIPLIER
 
 
 def money(value: Decimal) -> str:
@@ -123,6 +146,32 @@ def run() -> None:
             current_high = d(last_bar["High"])
             current_low = d(last_bar["Low"])
             bar_time = df15.index[-2]
+            now = __import__("pandas").Timestamp.now(tz="UTC")
+
+            # Weekend/maintenance candles can legitimately stop advancing.
+            # During open hours, stale data is fail-closed: no signals or trades.
+            if stale_bar(bar_time, now):
+                if gold_market_closed(now):
+                    print(
+                        f"CYCLE {cycle}: GOLD MARKET CLOSED | last_closed_bar={bar_time} | waiting for reopen.",
+                        flush=True,
+                    )
+                else:
+                    age_minutes = (now - bar_time).total_seconds() / 60.0
+                    print(
+                        f"CYCLE {cycle}: STALE GOLD DATA | last_closed_bar={bar_time} | "
+                        f"age={age_minutes:.1f}m | signals/orders skipped.",
+                        flush=True,
+                    )
+                    audit(
+                        "STALE_DATA",
+                        cycle=cycle,
+                        bar_time=str(bar_time),
+                        age_minutes=age_minutes,
+                    )
+                time.sleep(POLL_SECONDS)
+                continue
+
             signal = latest_executable_signal(df15, df1h, FRESHNESS_BARS)
 
             pos = state.get("open_position")
