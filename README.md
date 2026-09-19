@@ -13,6 +13,13 @@ Gold-only execution bot extracted from the proven SMC paper-trading strategy.
 - **Telegram:** not used.
 - **Live orders:** blocked by default. Both `LIVE_TRADING=true` and `ALLOW_LIVE_ORDERS=true` are required.
 
+## Paper runtime persistence
+The continuous paper runtime writes:
+- `gold_paper_state.json` — restart-safe current state.
+- `gold_paper_audit.jsonl` — append-only event ledger used as the authoritative source for closed-trade statistics.
+
+The authoritative trade totals are reconstructed from unique `EXIT` events rather than trusting mutable console counters.
+
 ## Preflight first
 `preflight.py` is read-only. It discovers the actual Binance Gold contract, account USDT balance, exchange minimums/precision, current strategy signal (if any), calculated position quantity and estimated 1R. It refuses to recommend a trade when the configured capital/risk is below exchange minimums.
 
@@ -29,7 +36,13 @@ The bot does not assume that the entire Binance wallet is available for this str
 8. Trailing logic advances the SL at 0.6R increments.
 9. Exchange state is the source of truth; local state is only an audit/reconciliation aid.
 
+## Vercel
+Vercel is **not** the continuous Gold worker. It exposes only a read-only health endpoint so deployment/import health can be checked without loading the worker loop.
+
+## GitHub Actions
+GitHub Actions is now **CI/preflight only**. The previous scheduled workflow launched an unbounded worker on a GitHub-hosted runner and attempted to commit state after the worker exited; that state-commit step was unreachable during normal operation. GitHub-hosted jobs also have a 6-hour execution limit, so they are not a suitable continuous runner.
+
 ## Safety
 Do not enable live trading before running the read-only preflight and verifying the exact contract returned by the account. API keys belong only in GitHub Secrets (`BINANCE_API_KEY`, `BINANCE_API_SECRET`) and must never be committed to the repository.
 
-GitHub Actions is suitable for CI/preflight, but a 15-minute scheduled job is not sufficient for reliable continuous live trailing. Continuous live execution needs a continuously running worker or exchange-native protection for the position.
+Continuous live execution needs a continuously running worker or exchange-native protection for the position.
