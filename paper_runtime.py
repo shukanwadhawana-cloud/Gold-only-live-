@@ -61,6 +61,11 @@ def paper_qty(entry: Decimal, sl: Decimal) -> Decimal:
     return risk_budget() / risk_distance
 
 
+def display_direction(direction: str) -> str:
+    """Invert direction only in user-facing runtime messages; strategy/state stay unchanged."""
+    return "SELL" if direction == "BUY" else "BUY" if direction == "SELL" else direction
+
+
 def signal_key(signal: dict) -> str:
     return f"{signal['time']}|{signal['type']}|{signal['entry']}|{signal['sl']}"
 
@@ -108,7 +113,7 @@ def close_position(state: dict, reason: str, exit_price: Decimal, bar_time, sign
     pos["mae_r"] = str(d(pos.get("mae_r", "0")))
     pos["mfe_r"] = str(d(pos.get("mfe_r", "0")))
 
-    print(f"PAPER EXIT: {direction} {reason} | entry={money(entry)} exit={money(exit_price)} result={pnl_r:.2f}R / {pnl_usdt:.4f} USDT", flush=True)
+    print(f"PAPER EXIT: {display_direction(direction)} {reason} | entry={money(entry)} exit={money(exit_price)} result={pnl_r:.2f}R / {pnl_usdt:.4f} USDT", flush=True)
     audit("EXIT", **pos)
     state["open_position"] = None
     save_state(state)
@@ -213,7 +218,7 @@ def run() -> None:
                     new_sl = trail_stop(direction, entry, sl, initial_r, r_now)
                     if new_sl != sl:
                         pos["sl"] = str(new_sl)
-                        print(f"PAPER TRAIL: {direction} stop -> {money(new_sl)} at {r_now:.2f}R", flush=True)
+                        print(f"PAPER TRAIL: {display_direction(direction)} stop -> {money(new_sl)} at {r_now:.2f}R", flush=True)
                         audit("TRAIL", direction=direction, bar_time=str(bar_time), old_sl=str(sl), new_sl=str(new_sl), r_now=str(r_now))
                         save_state(state)
 
@@ -247,7 +252,7 @@ def run() -> None:
                         "trade_id": key,
                     }
                     state["last_signal_key"] = key
-                    print(f"PAPER ENTRY: {signal['type']} | bar={signal['time']} | entry={money(entry)} SL={money(sl)} TP={money(tp)} | theoretical_qty={qty:.8f} units | structure={signal['structure']}", flush=True)
+                    print(f"PAPER ENTRY: {display_direction(signal['type'])} | bar={signal['time']} | entry={money(entry)} SL={money(sl)} TP={money(tp)} | theoretical_qty={qty:.8f} units | structure={signal['structure']}", flush=True)
                     audit("ENTRY", **state["open_position"])
                     save_state(state)
 
