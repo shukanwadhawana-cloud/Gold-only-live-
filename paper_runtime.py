@@ -61,9 +61,9 @@ def paper_qty(entry: Decimal, sl: Decimal) -> Decimal:
     return risk_budget() / risk_distance
 
 
-def display_direction(direction: str) -> str:
-    """Invert direction only in user-facing runtime messages; strategy/state stay unchanged."""
-    return "SELL" if direction == "BUY" else "BUY" if direction == "SELL" else direction
+def execution_direction(strategy_direction: str) -> str:
+    """Gold-only execution is intentionally inverted while strategy signals remain unchanged."""
+    return "SELL" if strategy_direction == "BUY" else "BUY" if strategy_direction == "SELL" else strategy_direction
 
 
 def signal_key(signal: dict) -> str:
@@ -113,7 +113,7 @@ def close_position(state: dict, reason: str, exit_price: Decimal, bar_time, sign
     pos["mae_r"] = str(d(pos.get("mae_r", "0")))
     pos["mfe_r"] = str(d(pos.get("mfe_r", "0")))
 
-    print(f"PAPER EXIT: {display_direction(direction)} {reason} | entry={money(entry)} exit={money(exit_price)} result={pnl_r:.2f}R / {pnl_usdt:.4f} USDT", flush=True)
+    print(f"PAPER EXIT: {direction} {reason} | entry={money(entry)} exit={money(exit_price)} result={pnl_r:.2f}R / {pnl_usdt:.4f} USDT", flush=True)
     audit("EXIT", **pos)
     state["open_position"] = None
     save_state(state)
@@ -223,7 +223,7 @@ def run() -> None:
                         save_state(state)
 
                     # An opposite confirmed HIGH signal closes the paper position.
-                    if signal and signal["type"] != direction:
+                    if signal and execution_direction(signal["type"]) != direction:
                         close_position(state, "OPPOSITE_SIGNAL", current_price, bar_time, signal)
                         pos = None
 
@@ -238,7 +238,7 @@ def run() -> None:
                         raise RuntimeError("Rejected signal with zero SL distance.")
                     qty = paper_qty(entry, sl)
                     state["open_position"] = {
-                        "type": signal["type"],
+                        "type": execution_direction(signal["type"]),
                         "entry": str(entry),
                         "sl": str(sl),
                         "tp": str(tp),
@@ -250,9 +250,10 @@ def run() -> None:
                         "mae_r": "0",
                         "mfe_r": "0",
                         "trade_id": key,
+                        "strategy_direction": signal["type"],
                     }
                     state["last_signal_key"] = key
-                    print(f"PAPER ENTRY: {display_direction(signal['type'])} | bar={signal['time']} | entry={money(entry)} SL={money(sl)} TP={money(tp)} | theoretical_qty={qty:.8f} units | structure={signal['structure']}", flush=True)
+                    print(f"PAPER ENTRY: {state['open_position']['type']} | bar={signal['time']} | entry={money(entry)} SL={money(sl)} TP={money(tp)} | theoretical_qty={qty:.8f} units | structure={signal['structure']}", flush=True)
                     audit("ENTRY", **state["open_position"])
                     save_state(state)
 
