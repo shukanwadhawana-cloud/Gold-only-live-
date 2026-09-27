@@ -218,8 +218,8 @@ def run() -> None:
                     new_sl = trail_stop(direction, entry, sl, initial_r, r_now)
                     if new_sl != sl:
                         pos["sl"] = str(new_sl)
-                        print(f"PAPER TRAIL: {display_direction(direction)} stop -> {money(new_sl)} at {r_now:.2f}R", flush=True)
-                        audit("TRAIL", direction=direction, bar_time=str(bar_time), old_sl=str(sl), new_sl=str(new_sl), r_now=str(r_now))
+                        print(f"PAPER TRAIL: {direction} stop -> {money(new_sl)} at {r_now:.2f}R", flush=True)
+                        audit("TRAIL", strategy_direction=pos.get("strategy_direction"), execution_direction=direction, bar_time=str(bar_time), old_sl=str(sl), new_sl=str(new_sl), r_now=str(r_now))
                         save_state(state)
 
                     # An opposite confirmed HIGH signal closes the paper position.
@@ -253,7 +253,7 @@ def run() -> None:
                         "strategy_direction": signal["type"],
                     }
                     state["last_signal_key"] = key
-                    print(f"PAPER ENTRY: {state['open_position']['type']} | bar={signal['time']} | entry={money(entry)} SL={money(sl)} TP={money(tp)} | theoretical_qty={qty:.8f} units | structure={signal['structure']}", flush=True)
+                    print(f"PAPER ENTRY: strategy={signal["type"]} -> execution={state["open_position"]["type"]} | bar={signal["time"]} | entry={money(entry)} SL={money(sl)} TP={money(tp)} | theoretical_qty={qty:.8f} units | structure={signal["structure"]}", flush=True)
                     audit("ENTRY", **state["open_position"])
                     save_state(state)
 
