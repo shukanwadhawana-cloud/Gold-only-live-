@@ -53,17 +53,40 @@ def risk_budget() -> Decimal:
     return min(MAX_RISK_USDT, CAPITAL_CAP_USDT * RISK_FRACTION)
 
 
+def estimated_trade_cost() -> Decimal:
+    # Round-trip fee + slippage allowance. This is charged against the
+    # configured gross risk budget rather than added on top of it.
+    return max(ZERO, d(__import__("os").getenv("ESTIMATED_ROUND_TRIP_COST_USDT", "0")))
+
+
+def price_risk_budget() -> Decimal:
+    return max(ZERO, risk_budget() - estimated_trade_cost())
+
+
 def paper_qty(entry: Decimal, sl: Decimal) -> Decimal:
     risk_distance = abs(entry - sl)
     if risk_distance <= ZERO:
         return ZERO
     # Research-mode quantity only; exchange contract size/minimums are NOT assumed.
-    return risk_budget() / risk_distance
+    # Reserve estimated costs so a stop loss remains within the gross risk budget.
+    return price_risk_budget() / risk_distance
 
 
 def execution_direction(strategy_direction: str) -> str:
     """Gold-only execution is intentionally inverted while strategy signals remain unchanged."""
     return "SELL" if strategy_direction == "BUY" else "BUY" if strategy_direction == "SELL" else strategy_direction
+
+
+def execution_geometry(strategy_direction: str, entry: Decimal, strategy_sl: Decimal, strategy_tp: Decimal) -> tuple[Decimal, Decimal]:
+    """Mirror SL/TP around entry when execution direction is inverted."""
+    execution = execution_direction(strategy_direction)
+    sl_distance = abs(strategy_sl - entry)
+    tp_distance = abs(strategy_tp - entry)
+    if execution == "BUY":
+        return entry - sl_distance, entry + tp_distance
+    if execution == "SELL":
+        return entry + sl_distance, entry - tp_distance
+    return strategy_sl, strategy_tp
 
 
 def signal_key(signal: dict) -> str:
@@ -95,8 +118,9 @@ def close_position(state: dict, reason: str, exit_price: Decimal, bar_time, sign
     entry = d(pos["entry"])
     initial_r = d(pos["initial_r"])
     direction = pos["type"]
-    pnl_r = ((exit_price - entry) / initial_r) if direction == "BUY" else ((entry - exit_price) / initial_r)
-    pnl_usdt = pnl_r * risk_budget()
+    price_pnl_usdt = (((exit_price - entry) / initial_r) if direction == "BUY" else ((entry - exit_price) / initial_r)) * price_risk_budget()
+    pnl_usdt = price_pnl_usdt - estimated_trade_cost()
+    pnl_r = pnl_usdt / risk_budget() if risk_budget() > ZERO else ZERO
     state["realized_pnl_usdt"] = str(d(state["realized_pnl_usdt"]) + pnl_usdt)
     state["equity_usdt"] = str(d(state["equity_usdt"]) + pnl_usdt)
     state["trades"] = int(state["trades"]) + 1
@@ -126,6 +150,8 @@ def run() -> None:
     print("Live orders: BLOCKED", flush=True)
     print(f"Capital cap: {CAPITAL_CAP_USDT} USDT", flush=True)
     print(f"Risk budget: min({MAX_RISK_USDT} USDT, active_capital × {RISK_FRACTION})", flush=True)
+    print(f"Estimated round-trip fee/slippage reserve: {estimated_trade_cost():.4f} USDT", flush=True)
+    print(f"Price-movement risk budget after costs: {price_risk_budget():.4f} USDT", flush=True)
     print(f"Poll interval: {POLL_SECONDS}s", flush=True)
 
     state = load_state()
@@ -231,8 +257,9 @@ def run() -> None:
                 key = signal_key(signal)
                 if key != state.get("last_signal_key"):
                     entry = d(signal["entry"])
-                    sl = d(signal["sl"])
-                    tp = d(signal["tp"])
+                    strategy_sl = d(signal["sl"])
+                    strategy_tp = d(signal["tp"])
+                    sl, tp = execution_geometry(signal["type"], entry, strategy_sl, strategy_tp)
                     initial_r = abs(entry - sl)
                     if initial_r <= ZERO:
                         raise RuntimeError("Rejected signal with zero SL distance.")
@@ -251,9 +278,11 @@ def run() -> None:
                         "mfe_r": "0",
                         "trade_id": key,
                         "strategy_direction": signal["type"],
+                        "strategy_sl": str(strategy_sl),
+                        "strategy_tp": str(strategy_tp),
                     }
                     state["last_signal_key"] = key
-                    print(f"PAPER ENTRY: strategy={signal["type"]} -> execution={state["open_position"]["type"]} | bar={signal["time"]} | entry={money(entry)} SL={money(sl)} TP={money(tp)} | theoretical_qty={qty:.8f} units | structure={signal["structure"]}", flush=True)
+                    print(f"PAPER ENTRY: strategy={signal["type"]} -> execution={state["open_position"]["type"]} | bar={signal["time"]} | entry={money(entry)} SL={money(sl)} TP={money(tp)} | strategy_SL={money(strategy_sl)} strategy_TP={money(strategy_tp)} | theoretical_qty={qty:.8f} units | structure={signal["structure"]}", flush=True)
                     audit("ENTRY", **state["open_position"])
                     save_state(state)
 
