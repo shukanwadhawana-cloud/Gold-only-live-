@@ -6,12 +6,13 @@ paper session durable across worker restarts.
 """
 from __future__ import annotations
 
+import os
 import time
 from decimal import Decimal
 
 from config import CAPITAL_CAP_USDT, MAX_RISK_USDT, RISK_FRACTION, FRESHNESS_BARS
 from market_data import get_gold_bars
-from paper_state import audit, load_state, reconcile_trade_stats, save_state
+from paper_state import audit, load_state, persistence_info, reconcile_trade_stats, save_state
 from strategy import latest_executable_signal
 
 POLL_SECONDS = 60
@@ -56,7 +57,7 @@ def risk_budget() -> Decimal:
 def estimated_trade_cost() -> Decimal:
     # Round-trip fee + slippage allowance. This is charged against the
     # configured gross risk budget rather than added on top of it.
-    return max(ZERO, d(__import__("os").getenv("ESTIMATED_ROUND_TRIP_COST_USDT", "0")))
+    return max(ZERO, d(os.getenv("ESTIMATED_ROUND_TRIP_COST_USDT", "0")))
 
 
 def price_risk_budget() -> Decimal:
@@ -137,7 +138,14 @@ def close_position(state: dict, reason: str, exit_price: Decimal, bar_time, sign
     pos["mae_r"] = str(d(pos.get("mae_r", "0")))
     pos["mfe_r"] = str(d(pos.get("mfe_r", "0")))
 
-    print(f"PAPER EXIT: {direction} {reason} | entry={money(entry)} exit={money(exit_price)} result={pnl_r:.2f}R / {pnl_usdt:.4f} USDT", flush=True)
+    print(
+        f"PAPER EXIT: strategy={pos.get('strategy_direction')} -> execution={direction} | "
+        f"trade_id={pos.get('trade_id')} | reason={reason} | entry={money(entry)} exit={money(exit_price)} | "
+        f"initial_SL={money(d(pos.get('initial_sl', pos.get('sl', entry))))} "
+        f"current_SL={money(d(pos.get('sl', entry)))} initial_TP={money(d(pos.get('initial_tp', pos.get('tp', entry))))} | "
+        f"result={pnl_r:.2f}R / {pnl_usdt:.4f} USDT",
+        flush=True,
+    )
     audit("EXIT", **pos)
     state["open_position"] = None
     save_state(state)
@@ -153,13 +161,27 @@ def run() -> None:
     print(f"Estimated round-trip fee/slippage reserve: {estimated_trade_cost():.4f} USDT", flush=True)
     print(f"Price-movement risk budget after costs: {price_risk_budget():.4f} USDT", flush=True)
     print(f"Poll interval: {POLL_SECONDS}s", flush=True)
+    persistence = persistence_info()
+    print(
+        f"Audit persistence: {persistence['storage']} | "
+        f"state={persistence['state_file']} | audit={persistence['audit_file']} | "
+        f"durable={persistence['durable']}",
+        flush=True,
+    )
+    if not persistence["durable"]:
+        print(
+            "WARNING: Railway Volume not detected; paper state/audit files are not durable across redeploys.",
+            flush=True,
+        )
+    if os.getenv("PAPER_RUNTIME_REQUIRE_DURABLE_AUDIT", "false").lower() == "true" and not persistence["durable"]:
+        raise RuntimeError("Durable paper audit is required but no Railway Volume is attached.")
 
     state = load_state()
     state = reconcile_trade_stats(state)
     if d(state.get("equity_usdt", "0")) <= ZERO:
         state["equity_usdt"] = str(CAPITAL_CAP_USDT)
     save_state(state)
-    audit("RUNTIME_START", equity_usdt=state["equity_usdt"], capital_cap_usdt=str(CAPITAL_CAP_USDT))
+    audit("RUNTIME_START", equity_usdt=state["equity_usdt"], capital_cap_usdt=str(CAPITAL_CAP_USDT), persistence=persistence)
 
     cycle = 0
     while True:
@@ -269,6 +291,8 @@ def run() -> None:
                         "entry": str(entry),
                         "sl": str(sl),
                         "tp": str(tp),
+                        "initial_sl": str(sl),
+                        "initial_tp": str(tp),
                         "initial_r": str(initial_r),
                         "qty_research": str(qty),
                         "signal_time": str(signal["time"]),
@@ -282,7 +306,14 @@ def run() -> None:
                         "strategy_tp": str(strategy_tp),
                     }
                     state["last_signal_key"] = key
-                    print(f'PAPER ENTRY: strategy={signal["type"]} -> execution={state["open_position"]["type"]} | bar={signal["time"]} | entry={money(entry)} SL={money(sl)} TP={money(tp)} | strategy_SL={money(strategy_sl)} strategy_TP={money(strategy_tp)} | theoretical_qty={qty:.8f} units | structure={signal["structure"]}', flush=True)
+                    print(
+                        f'PAPER ENTRY: strategy={signal["type"]} -> execution={state["open_position"]["type"]} | '
+                        f'trade_id={key} | bar={signal["time"]} | entry={money(entry)} '
+                        f'SL={money(sl)} TP={money(tp)} | strategy_SL={money(strategy_sl)} '
+                        f'strategy_TP={money(strategy_tp)} | theoretical_qty={qty:.8f} units | '
+                        f'structure={signal["structure"]}',
+                        flush=True,
+                    )
                     audit("ENTRY", **state["open_position"])
                     save_state(state)
 
