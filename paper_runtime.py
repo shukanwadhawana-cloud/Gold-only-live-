@@ -282,7 +282,7 @@ def run() -> None:
                         "strategy_tp": str(strategy_tp),
                     }
                     state["last_signal_key"] = key
-                    print(f"PAPER ENTRY: strategy={signal["type"]} -> execution={state["open_position"]["type"]} | bar={signal["time"]} | entry={money(entry)} SL={money(sl)} TP={money(tp)} | strategy_SL={money(strategy_sl)} strategy_TP={money(strategy_tp)} | theoretical_qty={qty:.8f} units | structure={signal["structure"]}", flush=True)
+                    print(f'PAPER ENTRY: strategy={signal["type"]} -> execution={state["open_position"]["type"]} | bar={signal["time"]} | entry={money(entry)} SL={money(sl)} TP={money(tp)} | strategy_SL={money(strategy_sl)} strategy_TP={money(strategy_tp)} | theoretical_qty={qty:.8f} units | structure={signal["structure"]}', flush=True)
                     audit("ENTRY", **state["open_position"])
                     save_state(state)
 
