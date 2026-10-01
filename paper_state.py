@@ -1,4 +1,10 @@
-"""Durable paper-trading state and audit persistence."""
+"""Durable paper-trading state and audit persistence.
+
+On Railway, state/audit files are automatically placed on the attached Railway
+Volume when one exists. Without a volume they remain local/ephemeral, and the
+runtime reports that condition explicitly instead of silently claiming durable
+history.
+"""
 from __future__ import annotations
 
 import json
@@ -8,8 +14,40 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 
-STATE_FILE = Path(os.getenv("PAPER_STATE_FILE", "gold_paper_state.json"))
-AUDIT_FILE = Path(os.getenv("PAPER_AUDIT_FILE", "gold_paper_audit.jsonl"))
+DEFAULT_STATE_NAME = "gold_paper_state.json"
+DEFAULT_AUDIT_NAME = "gold_paper_audit.jsonl"
+
+
+def _runtime_path(env_name: str, default_name: str) -> Path:
+    configured = os.getenv(env_name, "").strip()
+    if configured:
+        return Path(configured)
+
+    volume_mount = os.getenv("RAILWAY_VOLUME_MOUNT_PATH", "").strip()
+    if volume_mount:
+        return Path(volume_mount) / default_name
+
+    return Path(default_name)
+
+
+STATE_FILE = _runtime_path("PAPER_STATE_FILE", DEFAULT_STATE_NAME)
+AUDIT_FILE = _runtime_path("PAPER_AUDIT_FILE", DEFAULT_AUDIT_NAME)
+
+
+def persistence_info() -> dict:
+    """Return non-secret persistence/runtime metadata for audit and startup logs."""
+    volume_mount = os.getenv("RAILWAY_VOLUME_MOUNT_PATH", "").strip()
+    return {
+        "state_file": str(STATE_FILE),
+        "audit_file": str(AUDIT_FILE),
+        "durable": bool(volume_mount),
+        "storage": "railway_volume" if volume_mount else "local_ephemeral_or_host",
+        "volume_mount_path": volume_mount or None,
+        "volume_name": os.getenv("RAILWAY_VOLUME_NAME") or None,
+        "deployment_id": os.getenv("RAILWAY_DEPLOYMENT_ID") or None,
+        "replica_id": os.getenv("RAILWAY_REPLICA_ID") or None,
+        "commit_sha": os.getenv("RAILWAY_GIT_COMMIT_SHA") or None,
+    }
 
 
 def _json_default(value):
@@ -27,7 +65,7 @@ def now_iso() -> str:
 def load_state() -> dict:
     if not STATE_FILE.exists():
         return {
-            "version": 2,
+            "version": 3,
             "equity_usdt": "20",
             "realized_pnl_usdt": "0",
             "trades": 0,
@@ -40,6 +78,7 @@ def load_state() -> dict:
     try:
         state = json.loads(STATE_FILE.read_text(encoding="utf-8"))
         state.setdefault("breakevens", 0)
+        state.setdefault("version", 3)
         return state
     except (OSError, json.JSONDecodeError) as exc:
         raise RuntimeError(f"Cannot load paper state: {exc}") from exc
@@ -66,7 +105,14 @@ def save_state(state: dict) -> None:
 
 def audit(event: str, **fields) -> None:
     AUDIT_FILE.parent.mkdir(parents=True, exist_ok=True)
-    record = {"ts": now_iso(), "event": event, **fields}
+    record = {
+        "ts": now_iso(),
+        "event": event,
+        "runtime_commit_sha": os.getenv("RAILWAY_GIT_COMMIT_SHA") or None,
+        "deployment_id": os.getenv("RAILWAY_DEPLOYMENT_ID") or None,
+        "replica_id": os.getenv("RAILWAY_REPLICA_ID") or None,
+        **fields,
+    }
     with AUDIT_FILE.open("a", encoding="utf-8") as handle:
         handle.write(
             json.dumps(record, default=_json_default, separators=(",", ":")) + "\n"
