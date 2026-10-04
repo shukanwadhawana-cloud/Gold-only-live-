@@ -7,7 +7,7 @@ protective orders cannot be installed, the position is closed immediately.
 import json
 import os
 from decimal import Decimal
-from exchange_adapter import make_exchange, gold_market, balance_usdt, size_for_risk
+from exchange_adapter import make_exchange, gold_market, balance_usdt, size_for_risk, set_one_x_leverage
 from config import ALLOWED_SYMBOLS, MAX_OPEN_POSITIONS, STATE_FILE
 
 
@@ -19,6 +19,7 @@ class LiveExecutor:
         self.market = gold_market(self.ex)
         if self.market['id'] not in ALLOWED_SYMBOLS:
             raise RuntimeError(f'Unexpected live symbol: {self.market["id"]}')
+        set_one_x_leverage(self.ex, self.market)
 
     def _positions(self):
         try:
