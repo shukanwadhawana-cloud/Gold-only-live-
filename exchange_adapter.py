@@ -7,7 +7,7 @@ LIVE_TRADING and ALLOW_LIVE_ORDERS are true.
 from decimal import Decimal
 import os
 import ccxt
-from config import SYMBOL, CAPITAL_CAP_USDT, risk_budget
+from config import SYMBOL, CAPITAL_CAP_USDT, risk_budget, LEVERAGE
 
 
 def make_exchange():
@@ -28,12 +28,20 @@ def make_exchange():
 def gold_market(ex=None):
     ex = ex or make_exchange()
     markets = ex.load_markets()
-    matches = [m for m in markets.values() if str(m.get("id", "")).upper() == SYMBOL and m.get("contract")]
+    matches = [m for m in markets.values() if str(m.get("id", "")).upper() == SYMBOL and m.get("contract") and m.get("swap") and str(m.get("settle", "")).upper() == "USDT"]
     if not matches:
-        matches = [m for m in markets.values() if "XAU" in str(m.get("id", "")).upper() and m.get("quote") == "USDT" and m.get("contract")]
-    if not matches:
-        raise RuntimeError("Binance account/API did not expose a contract market for XAUUSDT.")
+        raise RuntimeError("Binance account/API did not expose the XAUTUSDT USDⓈ-M perpetual.")
     return matches[0]
+
+
+def set_one_x_leverage(ex, market):
+    if LEVERAGE != 1:
+        raise RuntimeError("Live leverage safety gate violated: LEVERAGE must be 1.")
+    result = ex.set_leverage(1, market["symbol"])
+    accepted = result.get("leverage") if isinstance(result, dict) else None
+    if accepted is not None and int(accepted) != 1:
+        raise RuntimeError(f"Binance did not confirm 1x leverage: {result}")
+    return result
 
 
 def market_info():
@@ -50,6 +58,7 @@ def market_info():
         "limits": m.get("limits"),
         "precision": m.get("precision"),
         "info": m.get("info", {}),
+        "leverage": LEVERAGE,
     }
 
 
@@ -129,7 +138,7 @@ def account_snapshot():
 def open_market(direction, amount, price=None):
     if os.getenv("LIVE_TRADING", "false").lower() != "true" or os.getenv("ALLOW_LIVE_ORDERS", "false").lower() != "true":
         raise RuntimeError("LIVE_TRADING/ALLOW_LIVE_ORDERS are not both true; live order blocked.")
-    ex = make_exchange(); m = gold_market(ex)
+    ex = make_exchange(); m = gold_market(ex); set_one_x_leverage(ex, m)
     side = "buy" if direction == "BUY" else "sell"
     return ex.create_order(m["symbol"], "market", side, float(amount))
 
