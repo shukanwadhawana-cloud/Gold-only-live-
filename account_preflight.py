@@ -11,7 +11,7 @@ import os
 from exchange_adapter import make_exchange, gold_market, balance_usdt
 from market_data import get_gold_bars
 from strategy import latest_executable_signal
-from config import FRESHNESS_BARS, MAX_RISK_USDT, RISK_FRACTION
+from config import CAPITAL_CAP_USDT, FRESHNESS_BARS, MAX_RISK_USDT, RISK_FRACTION, LEVERAGE
 
 CAPS = (Decimal("5"), Decimal("10"), Decimal("20"))
 
@@ -56,7 +56,7 @@ def feasibility(balance, entry, sl, rules):
         active = min(balance, cap)
         risk = min(MAX_RISK_USDT, active * RISK_FRACTION)
         risk_per_contract = price_risk * rules["contract_size"]
-        raw_qty = risk / risk_per_contract
+        risk_qty = risk / risk_per_contract\n        capital_qty = min(balance, CAPITAL_CAP_USDT) / (entry * rules["contract_size"])\n        raw_qty = min(risk_qty, capital_qty)
 
         # Let CCXT apply exchange precision/step rules where possible.
         qty = raw_qty
@@ -115,7 +115,7 @@ def main():
     print(f"XAUT exchange id: {market.get('id')}")
     print(f"XAU CCXT symbol: {symbol}")
     print(f"Active: {market.get('active')}")
-    print(f"Contract: {market.get('contract')} | Swap: {market.get('swap')}")
+    print(f"Contract: {market.get('contract')} | Swap: {market.get('swap')} | Leverage lock: {LEVERAGE}x")
     print(f"Contract size: {rules['contract_size']}")
     print(f"Minimum quantity: {rules['min_qty']}")
     print(f"Minimum notional: {rules['min_notional']}")
