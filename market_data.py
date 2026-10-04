@@ -1,4 +1,4 @@
-"""Free Gold market-data reader with Binance-first and Yahoo fallback."""
+"""Binance XAUTUSDT perpetual market-data reader."""
 import pandas as pd
 from exchange_adapter import make_exchange, gold_market
 
