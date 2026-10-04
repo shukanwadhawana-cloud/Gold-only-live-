@@ -23,14 +23,14 @@ def main():
     matches = []
     for m in markets.values():
         market_id = str(m.get("id", "")).upper()
-        if market_id == "XAUTUSDT" or ("XAU" in market_id and m.get("quote") == "USDT"):
+        if market_id == "XAUTUSDT" and m.get("contract") and m.get("swap") and str(m.get("settle", "")).upper() == "USDT":
             matches.append({k: m.get(k) for k in ("id", "symbol", "type", "contract", "swap", "active", "limits", "precision")})
 
     print("Binance Gold markets:")
     for item in matches:
         print(item)
     if not matches:
-        raise SystemExit("XAUUSDT was not exposed by this Binance market-data endpoint.")
+        raise SystemExit("XAUTUSDT USDⓈ-M perpetual was not exposed by this Binance market-data endpoint.")
 
 
 if __name__ == "__main__":
