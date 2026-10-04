@@ -6,7 +6,7 @@ contract rules make the chosen capital/risk settings feasible.
 from decimal import Decimal
 from exchange_adapter import make_exchange, gold_market, balance_usdt, size_for_risk
 from market_data import get_gold_bars
-from paper_runtime import gold_market_closed, stale_bar
+from paper_runtime import stale_bar
 from strategy import latest_executable_signal
 from config import CAPITAL_CAP_USDT, LEVERAGE, risk_budget
 
