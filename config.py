@@ -6,7 +6,7 @@ The bot never assumes that the whole wallet is available for trading.
 import os
 from decimal import Decimal
 
-SYMBOL = "XAUUSDT"
+SYMBOL = "XAUTUSDT"
 TIMEFRAME = os.getenv("TIMEFRAME", "15m")
 HTF_TIMEFRAME = os.getenv("HTF_TIMEFRAME", "1h")
 
@@ -32,13 +32,17 @@ ALLOW_LIVE_ORDERS = os.getenv("ALLOW_LIVE_ORDERS", "false").lower() == "true"
 
 BINANCE_API_KEY = os.getenv("BINANCE_API_KEY", "")
 BINANCE_API_SECRET = os.getenv("BINANCE_API_SECRET", "")
+# Hard-lock live XAUTUSDT perpetual execution to 1x.
+LEVERAGE = int(os.getenv("LEVERAGE", "1"))
+if LEVERAGE != 1:
+    raise ValueError("LEVERAGE must remain 1 for the live XAUTUSDT bot.")
 
 DATA_LIMIT = int(os.getenv("DATA_LIMIT", "500"))
 FRESHNESS_BARS = int(os.getenv("FRESHNESS_BARS", "4"))
 STATE_FILE = os.getenv("STATE_FILE", "gold_state.json")
 AUDIT_FILE = os.getenv("AUDIT_FILE", "audit.jsonl")
 
-# We intentionally do not accept a symbol from the environment: Gold-only means XAUUSDT only.
+# We intentionally do not accept a symbol from the environment: Gold-only means XAUTUSDT only.
 ALLOWED_SYMBOLS = {SYMBOL}
 
 
