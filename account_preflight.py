@@ -1,7 +1,7 @@
-"""Read-only Binance account and XAUUSDT feasibility preflight.
+"""Read-only Binance account and XAUTUSDT feasibility preflight.
 
 This module NEVER places, modifies, or cancels an order. It checks the
-authenticated account, discovers the live XAUUSDT contract rules, and—when a
+authenticated account, discovers the live XAUTUSDT contract rules, and—when a
 fresh strategy signal exists—calculates whether small capital caps can meet
 the exchange minimums.
 """
@@ -112,7 +112,7 @@ def main():
     last = d(ticker.get("last"))
 
     print(f"Account USDT total: {balance}")
-    print(f"XAU exchange id: {market.get('id')}")
+    print(f"XAUT exchange id: {market.get('id')}")
     print(f"XAU CCXT symbol: {symbol}")
     print(f"Active: {market.get('active')}")
     print(f"Contract: {market.get('contract')} | Swap: {market.get('swap')}")
@@ -121,7 +121,7 @@ def main():
     print(f"Minimum notional: {rules['min_notional']}")
     print(f"Price precision: {rules['price_precision']}")
     print(f"Amount precision: {rules['amount_precision']}")
-    print(f"Current XAU price: {last}")
+    print(f"Current XAUT price: {last}")
 
     # Strategy signal check is deliberately read-only and uses the same signal engine.
     df15 = get_gold_bars("15m")
