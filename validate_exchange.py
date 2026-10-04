@@ -23,7 +23,7 @@ def main():
     matches = []
     for m in markets.values():
         market_id = str(m.get("id", "")).upper()
-        if market_id == "XAUUSDT" or ("XAU" in market_id and m.get("quote") == "USDT"):
+        if market_id == "XAUTUSDT" or ("XAU" in market_id and m.get("quote") == "USDT"):
             matches.append({k: m.get(k) for k in ("id", "symbol", "type", "contract", "swap", "active", "limits", "precision")})
 
     print("Binance Gold markets:")
