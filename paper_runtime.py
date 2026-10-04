@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import os
 import time
-from decimal import Decimal
+from decimal import Decimal, ROUND_FLOOR
 
 from config import CAPITAL_CAP_USDT, MAX_RISK_USDT, RISK_FRACTION, FRESHNESS_BARS
 from market_data import get_gold_bars
@@ -81,7 +81,7 @@ def trail_stop(direction: str, entry: Decimal, current_sl: Decimal, initial_r: D
     """Advance the stop every 0.6R without an arbitrary upper ceiling."""
     if r_now < TRAIL_STEP_R:
         return current_sl
-    steps = (r_now / TRAIL_STEP_R).to_integral_value(rounding=__import__("decimal").ROUND_FLOOR)
+    steps = (r_now / TRAIL_STEP_R).to_integral_value(rounding=ROUND_FLOOR)
     lock_r = max(ZERO, (steps - Decimal("1")) * TRAIL_STEP_R)
     candidate = entry + initial_r * lock_r if direction == "BUY" else entry - initial_r * lock_r
     return max(current_sl, candidate) if direction == "BUY" else min(current_sl, candidate)
