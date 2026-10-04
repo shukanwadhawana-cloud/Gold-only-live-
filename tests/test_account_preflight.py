@@ -19,7 +19,8 @@ def test_small_capital_feasibility_uses_contract_size():
     )
     assert rows[0]["cap"] == Decimal("5")
     assert rows[0]["risk_budget"] == Decimal("0.5")
-    assert rows[0]["raw_qty"] == Decimal("0.05")
+    assert rows[0]["raw_qty"] == Decimal("5") / Decimal("3500")
+    assert rows[0]["notional"] == Decimal("5")
     assert rows[0]["meets_minimums"] is True
 
 
@@ -55,5 +56,5 @@ def test_contract_size_changes_quantity_and_notional():
         sl=Decimal("3490"),
         rules=rules,
     )
-    assert rows[0]["raw_qty"] == Decimal("0.005")
-    assert rows[0]["notional"] == Decimal("175")
+    assert rows[0]["raw_qty"] == Decimal("5") / (Decimal("3500") * Decimal("10"))
+    assert rows[0]["notional"] == Decimal("5")
