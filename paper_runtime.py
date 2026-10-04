@@ -78,23 +78,13 @@ def signal_key(signal: dict) -> str:
 
 
 def trail_stop(direction: str, entry: Decimal, current_sl: Decimal, initial_r: Decimal, r_now: Decimal) -> Decimal:
-    if direction == "BUY":
-        new_sl = current_sl
-        levels = ((Decimal("0.6"), ZERO), (Decimal("1.2"), Decimal("0.6")),
-                  (Decimal("1.8"), Decimal("1.2")), (Decimal("2.4"), Decimal("1.8")),
-                  (Decimal("3.0"), Decimal("2.4")), (Decimal("3.6"), Decimal("3.0")))
-        for trigger, lock_r in levels:
-            if r_now >= trigger:
-                new_sl = max(new_sl, entry + initial_r * lock_r)
-        return new_sl
-    new_sl = current_sl
-    levels = ((Decimal("0.6"), ZERO), (Decimal("1.2"), Decimal("0.6")),
-              (Decimal("1.8"), Decimal("1.2")), (Decimal("2.4"), Decimal("1.8")),
-              (Decimal("3.0"), Decimal("2.4")), (Decimal("3.6"), Decimal("3.0")))
-    for trigger, lock_r in levels:
-        if r_now >= trigger:
-            new_sl = min(new_sl, entry - initial_r * lock_r)
-    return new_sl
+    """Advance the stop every 0.6R without an arbitrary upper ceiling."""
+    if r_now < TRAIL_STEP_R:
+        return current_sl
+    steps = (r_now / TRAIL_STEP_R).to_integral_value(rounding=__import__("decimal").ROUND_FLOOR)
+    lock_r = max(ZERO, (steps - Decimal("1")) * TRAIL_STEP_R)
+    candidate = entry + initial_r * lock_r if direction == "BUY" else entry - initial_r * lock_r
+    return max(current_sl, candidate) if direction == "BUY" else min(current_sl, candidate)
 
 
 def close_position(state: dict, reason: str, exit_price: Decimal, bar_time, signal=None) -> None:
