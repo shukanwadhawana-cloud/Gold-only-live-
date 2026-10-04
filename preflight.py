@@ -1,4 +1,4 @@
-"""Read-only Binance/XAUUSDT preflight.
+"""Read-only Binance/XAUTUSDT preflight.
 
 This never places an order. It tells us whether the exchange's current
 contract rules make the chosen capital/risk settings feasible.
@@ -8,7 +8,7 @@ from exchange_adapter import make_exchange, gold_market, balance_usdt, size_for_
 from market_data import get_gold_bars
 from paper_runtime import gold_market_closed, stale_bar
 from strategy import latest_executable_signal
-from config import CAPITAL_CAP_USDT, risk_budget
+from config import CAPITAL_CAP_USDT, LEVERAGE, risk_budget
 
 
 def main():
@@ -18,7 +18,7 @@ def main():
     print("=== GOLD LIVE PREFLIGHT (READ ONLY) ===")
     print("Exchange: Binance")
     print(f"Exchange symbol: {m['id']} / CCXT: {m['symbol']}")
-    print(f"Contract: {m.get('contract')} | Swap: {m.get('swap')} | Active: {m.get('active')}")
+    print(f"Contract: {m.get('contract')} | Swap: {m.get('swap')} | Active: {m.get('active')} | Leverage: {LEVERAGE}x")
     print(f"Wallet USDT: {balance}")
     print(f"Capital cap: {min(balance, CAPITAL_CAP_USDT)} USDT (configured ceiling {CAPITAL_CAP_USDT})")
     print(f"Risk budget: {risk_budget(balance)} USDT")
@@ -36,9 +36,6 @@ def main():
     import pandas as pd
     now = pd.Timestamp.now(tz="UTC")
 
-    if gold_market_closed(now):
-        print(f"RESULT: Gold market is in a scheduled closed window. DO NOT trade. Last closed bar: {bar_time}")
-        return
     if stale_bar(bar_time, now):
         age_minutes = (now - bar_time).total_seconds() / 60.0
         print(f"RESULT: Gold data is stale ({age_minutes:.1f}m old). DO NOT trade.")
