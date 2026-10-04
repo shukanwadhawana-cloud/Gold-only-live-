@@ -1,6 +1,6 @@
 """Binance-first Gold-only exchange adapter.
 
-The adapter discovers the actual XAUUSDT market from exchange metadata rather
+The adapter discovers the actual XAUTUSDT market from exchange metadata rather
 than guessing a CCXT symbol. Live order placement is blocked unless both
 LIVE_TRADING and ALLOW_LIVE_ORDERS are true.
 """
@@ -13,7 +13,7 @@ from config import SYMBOL, CAPITAL_CAP_USDT, risk_budget, LEVERAGE
 def make_exchange():
     name = os.getenv("EXCHANGE", "binance").lower()
     if name != "binance":
-        raise ValueError("This live build is intentionally Binance-only. Use Binance for XAUUSDT.")
+        raise ValueError("This live build is intentionally Binance-only. Use Binance XAUTUSDT perpetual.")
     ex = ccxt.binance({
         "enableRateLimit": True,
         "apiKey": os.getenv("BINANCE_API_KEY", ""),
@@ -94,6 +94,10 @@ def size_for_risk(ex, direction, entry, sl, balance):
     contract_size = Decimal(str(m.get("contractSize") or 1))
     risk_per_contract = price_risk * contract_size
     raw_qty = risk_budget_usdt / risk_per_contract
+    # At hard-locked 1x, notional cannot exceed the active capital allocation.
+    capital_cap = min(Decimal(str(balance)), CAPITAL_CAP_USDT)
+    capital_qty = capital_cap / (Decimal(str(entry)) * contract_size)
+    raw_qty = min(raw_qty, capital_qty)
     qty = _floor_amount(ex, m["symbol"], raw_qty)
 
     limits = m.get("limits") or {}
