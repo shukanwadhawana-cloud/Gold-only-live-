@@ -3,8 +3,8 @@
 Gold-only execution bot extracted from the proven SMC paper-trading strategy.
 
 ## Current build
-- **Asset:** XAUUSDT only. No BTC/ETH/XRP/LINK/AAVE/SOL/AVAX/BNB execution paths.
-- **Preferred exchange:** Binance Futures; the adapter dynamically discovers the actual XAUUSDT contract from exchange metadata.
+- **Asset:** XAUTUSDT only. No BTC/ETH/XRP/LINK/AAVE/SOL/AVAX/BNB execution paths.
+- **Preferred exchange:** Binance Futures; the adapter dynamically discovers the exact XAUTUSDT USDⓈ-M perpetual contract from exchange metadata.
 - **Strategy:** 15m BOS/CHoCH, ATR-adjusted order block, 1H+4H EMA50 alignment, session filter, HIGH-confidence gate.
 - **Risk:** original strategy SL, 4R TP, progressive 0.6R trailing indefinitely.
 - **Capital cap:** configurable, default 20 USDT.

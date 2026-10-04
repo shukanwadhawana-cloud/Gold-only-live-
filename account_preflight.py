@@ -1,7 +1,7 @@
-"""Read-only Binance account and XAUUSDT feasibility preflight.
+"""Read-only Binance account and XAUTUSDT feasibility preflight.
 
 This module NEVER places, modifies, or cancels an order. It checks the
-authenticated account, discovers the live XAUUSDT contract rules, and—when a
+authenticated account, discovers the live XAUTUSDT contract rules, and—when a
 fresh strategy signal exists—calculates whether small capital caps can meet
 the exchange minimums.
 """
@@ -11,7 +11,7 @@ import os
 from exchange_adapter import make_exchange, gold_market, balance_usdt
 from market_data import get_gold_bars
 from strategy import latest_executable_signal
-from config import FRESHNESS_BARS, MAX_RISK_USDT, RISK_FRACTION
+from config import CAPITAL_CAP_USDT, FRESHNESS_BARS, MAX_RISK_USDT, RISK_FRACTION, LEVERAGE
 
 CAPS = (Decimal("5"), Decimal("10"), Decimal("20"))
 
@@ -56,7 +56,9 @@ def feasibility(balance, entry, sl, rules):
         active = min(balance, cap)
         risk = min(MAX_RISK_USDT, active * RISK_FRACTION)
         risk_per_contract = price_risk * rules["contract_size"]
-        raw_qty = risk / risk_per_contract
+        risk_qty = risk / risk_per_contract
+        capital_qty = active / (entry * rules["contract_size"])
+        raw_qty = min(risk_qty, capital_qty)
 
         # Let CCXT apply exchange precision/step rules where possible.
         qty = raw_qty
@@ -112,16 +114,16 @@ def main():
     last = d(ticker.get("last"))
 
     print(f"Account USDT total: {balance}")
-    print(f"XAU exchange id: {market.get('id')}")
+    print(f"XAUT exchange id: {market.get('id')}")
     print(f"XAU CCXT symbol: {symbol}")
     print(f"Active: {market.get('active')}")
-    print(f"Contract: {market.get('contract')} | Swap: {market.get('swap')}")
+    print(f"Contract: {market.get('contract')} | Swap: {market.get('swap')} | Leverage lock: {LEVERAGE}x")
     print(f"Contract size: {rules['contract_size']}")
     print(f"Minimum quantity: {rules['min_qty']}")
     print(f"Minimum notional: {rules['min_notional']}")
     print(f"Price precision: {rules['price_precision']}")
     print(f"Amount precision: {rules['amount_precision']}")
-    print(f"Current XAU price: {last}")
+    print(f"Current XAUT price: {last}")
 
     # Strategy signal check is deliberately read-only and uses the same signal engine.
     df15 = get_gold_bars("15m")

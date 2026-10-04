@@ -8,9 +8,9 @@ from __future__ import annotations
 
 import os
 import time
-from decimal import Decimal
+from decimal import Decimal, ROUND_FLOOR
 
-from config import CAPITAL_CAP_USDT, MAX_RISK_USDT, RISK_FRACTION, FRESHNESS_BARS
+from config import CAPITAL_CAP_USDT, MAX_RISK_USDT, RISK_FRACTION, FRESHNESS_BARS, TRAIL_STEP_R
 from market_data import get_gold_bars
 from paper_state import audit, load_state, persistence_info, reconcile_trade_stats, save_state
 from strategy import latest_executable_signal
@@ -22,17 +22,7 @@ STALE_BAR_MULTIPLIER = 3
 
 
 def gold_market_closed(now) -> bool:
-    """Return True during normal CME Gold weekend/daily maintenance windows."""
-    weekday = now.weekday()
-    utc_minutes = now.hour * 60 + now.minute
-    if weekday == 5:  # Saturday
-        return True
-    if weekday == 6 and utc_minutes < 22 * 60:  # Sunday before reopen
-        return True
-    if weekday == 4 and utc_minutes >= 21 * 60:  # Friday after close
-        return True
-    if weekday in (0, 1, 2, 3) and 21 * 60 <= utc_minutes < 22 * 60:
-        return True
+    """XAUTUSDT perpetual trades 24/7; no scheduled market closure is applied."""
     return False
 
 
@@ -88,23 +78,13 @@ def signal_key(signal: dict) -> str:
 
 
 def trail_stop(direction: str, entry: Decimal, current_sl: Decimal, initial_r: Decimal, r_now: Decimal) -> Decimal:
-    if direction == "BUY":
-        new_sl = current_sl
-        levels = ((Decimal("0.6"), ZERO), (Decimal("1.2"), Decimal("0.6")),
-                  (Decimal("1.8"), Decimal("1.2")), (Decimal("2.4"), Decimal("1.8")),
-                  (Decimal("3.0"), Decimal("2.4")), (Decimal("3.6"), Decimal("3.0")))
-        for trigger, lock_r in levels:
-            if r_now >= trigger:
-                new_sl = max(new_sl, entry + initial_r * lock_r)
-        return new_sl
-    new_sl = current_sl
-    levels = ((Decimal("0.6"), ZERO), (Decimal("1.2"), Decimal("0.6")),
-              (Decimal("1.8"), Decimal("1.2")), (Decimal("2.4"), Decimal("1.8")),
-              (Decimal("3.0"), Decimal("2.4")), (Decimal("3.6"), Decimal("3.0")))
-    for trigger, lock_r in levels:
-        if r_now >= trigger:
-            new_sl = min(new_sl, entry - initial_r * lock_r)
-    return new_sl
+    """Advance the stop every 0.6R without an arbitrary upper ceiling."""
+    if r_now < TRAIL_STEP_R:
+        return current_sl
+    steps = (r_now / TRAIL_STEP_R).to_integral_value(rounding=ROUND_FLOOR)
+    lock_r = max(ZERO, (steps - Decimal("1")) * TRAIL_STEP_R)
+    candidate = entry + initial_r * lock_r if direction == "BUY" else entry - initial_r * lock_r
+    return max(current_sl, candidate) if direction == "BUY" else min(current_sl, candidate)
 
 
 def close_position(state: dict, reason: str, exit_price: Decimal, bar_time, signal=None) -> None:
@@ -195,8 +175,8 @@ def run() -> None:
             bar_time = df15.index[-2]
             now = __import__("pandas").Timestamp.now(tz="UTC")
 
-            # Weekend/maintenance candles can legitimately stop advancing.
-            # During open hours, stale data is fail-closed: no signals or trades.
+            # XAUTUSDT is a 24/7 perpetual. Stale data is always fail-closed:
+            # no signals or trades when completed candles stop advancing.
             if stale_bar(bar_time, now):
                 if gold_market_closed(now):
                     print(

@@ -11,7 +11,7 @@ def build_plan(ex, signal, balance_usdt):
     sl = Decimal(str(signal['sl']))
     tp = Decimal(str(signal['tp']))
     risk_per_unit = abs(entry - sl)
-    estimated_1r = qty * risk_per_unit
+    estimated_1r = qty * risk_per_unit * Decimal(str(sizing['contract_size']))
     floors = {}
     for level in (Decimal('0.6'), Decimal('1.2'), Decimal('1.8'), Decimal('2.4'), Decimal('3.0'), Decimal('3.6')):
         floors[str(level)] = floor_for_level(signal['type'], entry, sl, level)
