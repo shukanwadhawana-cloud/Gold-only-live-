@@ -63,11 +63,24 @@ class LiveExecutor:
                                             {'stopPrice': float(signal['sl']), 'reduceOnly': True, 'workingType': 'MARK_PRICE'})
             tp_order = self.ex.create_order(self.market['symbol'], 'TAKE_PROFIT_MARKET', close_side, float(filled), None,
                                             {'stopPrice': float(signal['tp']), 'reduceOnly': True, 'workingType': 'MARK_PRICE'})
-        except Exception:
+        except Exception as exc:
+            cleanup_errors = []
+            for protective in (sl_order, tp_order):
+                if protective and protective.get('id'):
+                    try:
+                        self.ex.cancel_order(protective['id'], self.market['symbol'])
+                    except Exception as cleanup_exc:
+                        cleanup_errors.append(f"cancel {protective['id']}: {cleanup_exc}")
             try:
-                self.ex.create_order(self.market['symbol'], 'market', close_side, float(filled), None, {'reduceOnly': True})
-            finally:
-                raise
+                self.ex.create_order(
+                    self.market['symbol'], 'market', close_side, float(filled), None, {'reduceOnly': True}
+                )
+            except Exception as close_exc:
+                cleanup_errors.append(f"emergency close: {close_exc}")
+            detail = f"Protective-order setup failed: {exc}"
+            if cleanup_errors:
+                detail += " | cleanup: " + "; ".join(cleanup_errors)
+            raise RuntimeError(detail) from exc
 
         state = {
             'symbol': self.market['id'], 'ccxt_symbol': self.market['symbol'], 'direction': signal['type'],
@@ -82,13 +95,22 @@ class LiveExecutor:
 
     def advance_trailing_stop(self, state, new_stop):
         old_id = state.get('sl_order_id')
-        if old_id:
-            try: self.ex.cancel_order(old_id, self.market['symbol'])
-            except Exception as exc: print(f'Warning: could not cancel old SL {old_id}: {exc}')
         close_side = 'sell' if state['direction'] == 'BUY' else 'buy'
-        order = self.ex.create_order(self.market['symbol'], 'STOP_MARKET', close_side, float(state['qty']), None,
-                                     {'stopPrice': float(new_stop), 'reduceOnly': True, 'workingType': 'MARK_PRICE'})
-        state['sl_order_id'] = order.get('id')
+        # Install the replacement stop before cancelling the old one so a
+        # transient API failure cannot leave the live position unprotected.
+        order = self.ex.create_order(
+            self.market['symbol'], 'STOP_MARKET', close_side, float(state['qty']), None,
+            {'stopPrice': float(new_stop), 'reduceOnly': True, 'workingType': 'MARK_PRICE'}
+        )
+        new_id = order.get('id')
+        if not new_id:
+            raise RuntimeError('Binance returned no order id for replacement trailing stop.')
+        if old_id and old_id != new_id:
+            try:
+                self.ex.cancel_order(old_id, self.market['symbol'])
+            except Exception as exc:
+                print(f'Warning: replacement SL {new_id} is active but old SL {old_id} could not be cancelled: {exc}')
+        state['sl_order_id'] = new_id
         state['sl'] = str(new_stop)
         tmp = STATE_FILE + '.tmp'
         with open(tmp,'w') as f: json.dump(state,f,indent=2)
