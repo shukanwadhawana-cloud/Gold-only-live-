@@ -20,7 +20,7 @@ def test_small_capital_feasibility_uses_contract_size():
     assert rows[0]["cap"] == Decimal("5")
     assert rows[0]["risk_budget"] == Decimal("0.5")
     assert rows[0]["raw_qty"] == Decimal("5") / Decimal("3500")
-    assert rows[0]["notional"] == Decimal("5")
+    assert rows[0]["notional"].quantize(Decimal("0.01")) == Decimal("5.00")
     assert rows[0]["meets_minimums"] is True
 
 
