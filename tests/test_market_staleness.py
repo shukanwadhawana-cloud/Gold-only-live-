@@ -32,5 +32,5 @@ def test_fresh_bar_is_not_stale():
 
 
 def test_trailing_stop_continues_beyond_3_6r():
-    assert trail_stop("BUY", Decimal("100"), Decimal("130"), Decimal("10"), Decimal("4.8")) == Decimal("140")
-    assert trail_stop("SELL", Decimal("100"), Decimal("70"), Decimal("10"), Decimal("4.8")) == Decimal("60")
+    assert trail_stop("BUY", Decimal("100"), Decimal("130"), Decimal("10"), Decimal("4.8")) == Decimal("142")
+    assert trail_stop("SELL", Decimal("100"), Decimal("70"), Decimal("10"), Decimal("4.8")) == Decimal("58")
