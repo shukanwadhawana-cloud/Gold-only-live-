@@ -57,7 +57,7 @@ def feasibility(balance, entry, sl, rules):
         risk = min(MAX_RISK_USDT, active * RISK_FRACTION)
         risk_per_contract = price_risk * rules["contract_size"]
         risk_qty = risk / risk_per_contract
-        capital_qty = min(balance, CAPITAL_CAP_USDT) / (entry * rules["contract_size"])
+        capital_qty = active / (entry * rules["contract_size"])
         raw_qty = min(risk_qty, capital_qty)
 
         # Let CCXT apply exchange precision/step rules where possible.
