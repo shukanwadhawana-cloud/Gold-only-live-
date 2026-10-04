@@ -10,7 +10,7 @@ import os
 import time
 from decimal import Decimal, ROUND_FLOOR
 
-from config import CAPITAL_CAP_USDT, MAX_RISK_USDT, RISK_FRACTION, FRESHNESS_BARS
+from config import CAPITAL_CAP_USDT, MAX_RISK_USDT, RISK_FRACTION, FRESHNESS_BARS, TRAIL_STEP_R
 from market_data import get_gold_bars
 from paper_state import audit, load_state, persistence_info, reconcile_trade_stats, save_state
 from strategy import latest_executable_signal
