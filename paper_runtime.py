@@ -185,8 +185,8 @@ def run() -> None:
             bar_time = df15.index[-2]
             now = __import__("pandas").Timestamp.now(tz="UTC")
 
-            # Weekend/maintenance candles can legitimately stop advancing.
-            # During open hours, stale data is fail-closed: no signals or trades.
+            # XAUTUSDT is a 24/7 perpetual. Stale data is always fail-closed:
+            # no signals or trades when completed candles stop advancing.
             if stale_bar(bar_time, now):
                 if gold_market_closed(now):
                     print(
