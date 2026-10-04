@@ -74,19 +74,12 @@ def paper_qty(entry: Decimal, sl: Decimal) -> Decimal:
 
 
 def execution_direction(strategy_direction: str) -> str:
-    """Gold-only execution is intentionally inverted while strategy signals remain unchanged."""
-    return "SELL" if strategy_direction == "BUY" else "BUY" if strategy_direction == "SELL" else strategy_direction
+    """Execute the strategy signal in its original direction; inversion is disabled."""
+    return strategy_direction
 
 
 def execution_geometry(strategy_direction: str, entry: Decimal, strategy_sl: Decimal, strategy_tp: Decimal) -> tuple[Decimal, Decimal]:
-    """Mirror SL/TP around entry when execution direction is inverted."""
-    execution = execution_direction(strategy_direction)
-    sl_distance = abs(strategy_sl - entry)
-    tp_distance = abs(strategy_tp - entry)
-    if execution == "BUY":
-        return entry - sl_distance, entry + tp_distance
-    if execution == "SELL":
-        return entry + sl_distance, entry - tp_distance
+    """Use the strategy's original SL/TP geometry without mirroring."""
     return strategy_sl, strategy_tp
 
 
