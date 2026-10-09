@@ -12,9 +12,11 @@ def test_bot_is_hard_locked_to_bitcoin_and_preserves_risk(monkeypatch):
     assert config.SYMBOL == "BTCUSDT"
     assert config.ALLOWED_SYMBOLS == {"BTCUSDT"}
     assert config.LEVERAGE == 1
-    assert str(config.CAPITAL_CAP_USDT) == "20"
+    assert str(config.CAPITAL_CAP_USDT) == "100"
     assert str(config.MAX_RISK_USDT) == "2"
     assert str(config.RISK_FRACTION) == "0.10"
+    assert str(config.ESTIMATED_TAKER_FEE_RATE) == "0.0005"
+    assert str(config.ESTIMATED_SLIPPAGE_RATE) == "0.0002"
 
 
 def test_market_data_rejects_non_bitcoin_without_exchange_access():
