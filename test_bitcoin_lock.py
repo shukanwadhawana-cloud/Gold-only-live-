@@ -20,7 +20,7 @@ def test_bot_is_hard_locked_to_bitcoin_and_preserves_risk(monkeypatch):
 def test_market_data_rejects_non_bitcoin_without_exchange_access():
     import market_data
     try:
-        market_data.get_bars("ETHUSDT")
+        market_data.get_bars("NOT_ALLOWED_SYMBOL")
     except ValueError as exc:
         assert "BTCUSDT only" in str(exc)
     else:
