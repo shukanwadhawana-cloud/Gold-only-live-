@@ -180,7 +180,7 @@ class LiveExecutor:
 
         state = {
             'symbol': self.market['id'], 'ccxt_symbol': self.market['symbol'], 'direction': signal['type'],
-            'entry': str(avg), 'sl': str(signal['sl']), 'tp': str(signal['tp']), 'qty': str(filled),
+            'entry': str(avg), 'sl': str(actual_sl), 'tp': str(actual_tp), 'qty': str(filled), 'initial_r': str(initial_r),
             'locked_level_r': '0', 'sl_order_id': sl_order.get('id'), 'tp_order_id': tp_order.get('id'),
             'entry_order_id': order.get('id')
         }
