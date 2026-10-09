@@ -116,12 +116,6 @@ def main():
 
     ex = make_exchange()
 
-    # Authentication/account permission check.
-    try:
-        balance = balance_usdt(ex)
-    except Exception as exc:
-        raise SystemExit(f"ACCOUNT_CHECK_FAILED: {type(exc).__name__}: {exc}")
-
     try:
         market = btc_market(ex)
     except Exception as exc:
@@ -132,7 +126,6 @@ def main():
     ticker = ex.fetch_ticker(symbol)
     last = d(ticker.get("last"))
 
-    print(f"Account USDT total: {balance}")
     print(f"BTC exchange id: {market.get('id')}")
     print(f"BTC CCXT symbol: {symbol}")
     print(f"Active: {market.get('active')}")
@@ -149,9 +142,14 @@ def main():
     try:
         funding = ex.fetch_funding_rate(symbol)
         current_funding = d(funding.get("fundingRate"))
-        print(f"Current funding rate: {current_funding}")
+        interval_hours = d(funding.get("intervalHours") or (market.get("info") or {}).get("fundingIntervalHours") or 8, Decimal("8"))
+        if interval_hours <= 0:
+            raise SystemExit("PREFLIGHT_BLOCKED: exchange returned an invalid funding interval.")
+        normalized_funding_8h = abs(current_funding) * Decimal("8") / interval_hours
+        print(f"Current funding rate per {interval_hours}h: {current_funding}")
+        print(f"Normalized funding rate per 8h: {normalized_funding_8h}")
         print(f"Funding rate reserve per 8h: {ESTIMATED_FUNDING_RATE_PER_8H}")
-        if abs(current_funding) > ESTIMATED_FUNDING_RATE_PER_8H:
+        if normalized_funding_8h > ESTIMATED_FUNDING_RATE_PER_8H:
             raise SystemExit("PREFLIGHT_BLOCKED: current funding rate exceeds configured funding reserve; update reserve and rerun.")
     except SystemExit:
         raise
@@ -162,6 +160,37 @@ def main():
     if not os.getenv("BINANCE_API_KEY") or not os.getenv("BINANCE_API_SECRET"):
         print("\nPREFLIGHT BLOCKED: public market checks completed, but authenticated account balance, actual taker fee tier, open positions/orders, and private order permissions cannot be verified without API credentials in the worker environment.")
         raise SystemExit(2)
+
+    # Private endpoints are read-only. API credentials must have read permissions;
+    # trading permissions are neither required nor used by this preflight.
+    try:
+        balance = balance_usdt(ex)
+        fee_info = ex.fetch_trading_fee(symbol)
+        actual_taker_fee = d(fee_info.get("taker"), Decimal("-1"))
+        if actual_taker_fee < 0:
+            raise RuntimeError("Binance did not return a usable taker fee.")
+        print(f"Account USDT total: {balance}")
+        print(f"Account taker fee rate: {actual_taker_fee}")
+        print(f"Configured taker fee reserve per side: {ESTIMATED_TAKER_FEE_RATE}")
+        if actual_taker_fee > ESTIMATED_TAKER_FEE_RATE:
+            raise SystemExit("PREFLIGHT_BLOCKED: account taker fee exceeds configured fee reserve; increase the reserve and rerun.")
+        positions = ex.fetch_positions([symbol])
+        open_positions = []
+        for position in positions:
+            contracts = position.get("contracts")
+            if contracts is None:
+                contracts = (position.get("info") or {}).get("positionAmt", 0)
+            if abs(d(contracts)) > 0:
+                open_positions.append(position)
+        open_orders = ex.fetch_open_orders(symbol)
+        print(f"Existing BTC positions: {len(open_positions)}")
+        print(f"Existing BTC open orders: {len(open_orders)}")
+        if open_positions or open_orders:
+            raise SystemExit("PREFLIGHT_BLOCKED: existing BTC position or open order found; reconcile it before activation.")
+    except SystemExit:
+        raise
+    except Exception as exc:
+        raise SystemExit(f"PRIVATE_READ_ONLY_CHECK_FAILED: {type(exc).__name__}: {exc}")
 
     # Strategy signal check is deliberately read-only and uses the same signal engine.
     df15 = get_btc_bars("15m")
