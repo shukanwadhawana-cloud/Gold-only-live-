@@ -3,7 +3,7 @@
 ## Conversion status
 - Repository: `shukanwadhawana-cloud/Gold-only-live-`
 - Target instrument: BTCUSDT perpetual only.
-- Capital cap preserved: 20 USDT.
+- Capital cap updated: 100 USDT maximum allocation at 1×.
 - Maximum risk budget preserved: 2 USDT and 10% of active cap.
 - Leverage preserved: 1×.
 - Live orders: disabled by default; normal entry point forces paper-only mode.

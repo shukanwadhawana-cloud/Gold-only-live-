@@ -11,9 +11,9 @@ import os
 from exchange_adapter import make_exchange, btc_market, balance_usdt, minimum_notional
 from market_data import get_btc_bars
 from strategy import latest_executable_signal
-from config import CAPITAL_CAP_USDT, FRESHNESS_BARS, MAX_RISK_USDT, RISK_FRACTION, LEVERAGE
+from config import (CAPITAL_CAP_USDT, FRESHNESS_BARS, MAX_RISK_USDT, RISK_FRACTION, LEVERAGE, ESTIMATED_TAKER_FEE_RATE, ESTIMATED_SLIPPAGE_RATE)
 
-CAPS = (Decimal("5"), Decimal("10"), Decimal("20"))
+CAPS = tuple(sorted({Decimal("5"), Decimal("10"), Decimal("20"), Decimal("50"), CAPITAL_CAP_USDT}))
 
 
 def d(value, default=Decimal("0")):
@@ -56,7 +56,10 @@ def feasibility(balance, entry, sl, rules):
         active = min(balance, cap)
         risk = min(MAX_RISK_USDT, active * RISK_FRACTION)
         risk_per_contract = price_risk * rules["contract_size"]
-        risk_qty = risk / risk_per_contract
+        round_trip_cost_rate = Decimal("2") * (ESTIMATED_TAKER_FEE_RATE + ESTIMATED_SLIPPAGE_RATE)
+        estimated_cost_per_contract = entry * rules["contract_size"] * round_trip_cost_rate
+        total_risk_per_contract = risk_per_contract + estimated_cost_per_contract
+        risk_qty = risk / total_risk_per_contract
         capital_qty = active / (entry * rules["contract_size"])
         raw_qty = min(risk_qty, capital_qty)
 
@@ -72,6 +75,11 @@ def feasibility(balance, entry, sl, rules):
         notional = qty * entry * rules["contract_size"]
         meets_qty = qty >= rules["min_qty"]
         meets_notional = notional >= rules["min_notional"]
+        estimated_stop_loss = qty * risk_per_contract
+        estimated_round_trip_fee = notional * Decimal("2") * ESTIMATED_TAKER_FEE_RATE
+        estimated_round_trip_slippage = notional * Decimal("2") * ESTIMATED_SLIPPAGE_RATE
+        estimated_total_risk = estimated_stop_loss + estimated_round_trip_fee + estimated_round_trip_slippage
+        risk_limit_pass = estimated_total_risk <= risk
         results.append({
             "cap": cap,
             "active_capital": active,
@@ -81,7 +89,12 @@ def feasibility(balance, entry, sl, rules):
             "notional": notional,
             "min_qty": rules["min_qty"],
             "min_notional": rules["min_notional"],
-            "meets_minimums": meets_qty and meets_notional,
+            "meets_minimums": meets_qty and meets_notional and risk_limit_pass,
+            "estimated_stop_loss_usdt": estimated_stop_loss,
+            "estimated_round_trip_fee_usdt": estimated_round_trip_fee,
+            "estimated_round_trip_slippage_usdt": estimated_round_trip_slippage,
+            "estimated_total_risk_usdt": estimated_total_risk,
+            "risk_limit_pass": risk_limit_pass,
         })
     return results
 
@@ -148,7 +161,11 @@ def main():
         print(
             f"CAP ${row['cap']}: active={row['active_capital']} | "
             f"1R budget={row['risk_budget']} | qty={row['raw_qty']} | "
-            f"notional={row['notional']} | minimums={'PASS' if row['meets_minimums'] else 'FAIL'}"
+            f"notional={row['notional']} | est. SL={row['estimated_stop_loss_usdt']:.4f} | "
+            f"fees={row['estimated_round_trip_fee_usdt']:.4f} | "
+            f"slippage={row['estimated_round_trip_slippage_usdt']:.4f} | "
+            f"total risk={row['estimated_total_risk_usdt']:.4f}/"
+            f"{row['risk_budget']} | minimums={'PASS' if row['meets_minimums'] else 'FAIL'}"
         )
 
     print("\nPREFLIGHT COMPLETE: READ ONLY. No order was sent.")
