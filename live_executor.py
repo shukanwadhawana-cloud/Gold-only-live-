@@ -6,9 +6,11 @@ protective orders cannot be installed, the position is closed immediately.
 """
 import json
 import os
-from decimal import Decimal
+from decimal import Decimal, ROUND_FLOOR, ROUND_CEILING
 from exchange_adapter import make_exchange, btc_market, balance_usdt, size_for_risk, set_one_x_leverage
-from config import ALLOWED_SYMBOLS, MAX_OPEN_POSITIONS, STATE_FILE
+from config import (ALLOWED_SYMBOLS, MAX_OPEN_POSITIONS, STATE_FILE, RR_RATIO,
+                    ESTIMATED_TAKER_FEE_RATE, ESTIMATED_SLIPPAGE_RATE,
+                    ESTIMATED_FUNDING_RATE_PER_8H, ESTIMATED_HOLD_HOURS)
 
 
 class LiveExecutor:
@@ -40,11 +42,53 @@ class LiveExecutor:
                 pass
         return False
 
+    def reconcile_readonly(self):
+        """Compare local durable state with exchange positions and open protection orders."""
+        positions = []
+        for p in self._positions():
+            contracts = p.get('contracts')
+            if contracts is None:
+                contracts = (p.get('info') or {}).get('positionAmt', 0)
+            if abs(Decimal(str(contracts or 0))) > 0:
+                positions.append(p)
+        orders = self.ex.fetch_open_orders(self.market['symbol'])
+        state = None
+        if os.path.exists(STATE_FILE):
+            with open(STATE_FILE, 'r') as f:
+                state = json.load(f)
+        if not positions and not orders and state is None:
+            return {'status': 'CLEAN_FLAT', 'positions': 0, 'open_orders': 0}
+        if not positions and orders:
+            return {'status': 'ORPHAN_ORDERS', 'positions': 0, 'open_orders': len(orders)}
+        if not positions and state is not None:
+            return {'status': 'STALE_LOCAL_STATE', 'positions': 0, 'open_orders': 0}
+        if positions and state is None:
+            return {'status': 'UNTRACKED_POSITION', 'positions': len(positions), 'open_orders': len(orders)}
+        open_ids = {str(o.get('id')) for o in orders if o.get('id') is not None}
+        required_ids = {str(state.get('sl_order_id')), str(state.get('tp_order_id'))}
+        if not required_ids.issubset(open_ids):
+            return {'status': 'PROTECTION_MISSING', 'positions': len(positions), 'open_orders': len(orders)}
+        return {'status': 'MANAGED_OPEN_POSITION', 'positions': len(positions), 'open_orders': len(orders)}
+
     def open_trade(self, signal):
         if signal.get('type') not in ('BUY','SELL'):
             raise ValueError('Only BUY/SELL signals are executable.')
-        if self._open_position_exists():
-            raise RuntimeError('An existing Bitcoin position is already open; MAX_OPEN_POSITIONS=1.')
+        entry = Decimal(str(signal['entry']))
+        sl = Decimal(str(signal['sl']))
+        tp = Decimal(str(signal['tp']))
+        risk = abs(entry - sl)
+        if risk <= 0:
+            raise ValueError('Signal Entry and SL must differ.')
+        if signal['type'] == 'BUY' and not (sl < entry < tp):
+            raise ValueError('BUY signal geometry must satisfy SL < Entry < TP.')
+        if signal['type'] == 'SELL' and not (tp < entry < sl):
+            raise ValueError('SELL signal geometry must satisfy TP < Entry < SL.')
+        signal_rr = abs(tp - entry) / risk
+        if abs(signal_rr - RR_RATIO) > Decimal('0.10'):
+            raise ValueError(f'Signal TP must preserve {RR_RATIO}R; got {signal_rr}R.')
+        reconciliation = self.reconcile_readonly()
+        if reconciliation['status'] != 'CLEAN_FLAT':
+            raise RuntimeError(f"Exchange/local state is not clean-flat; refusing entry: {reconciliation}")
 
         balance = balance_usdt(self.ex)
         sizing = size_for_risk(self.ex, signal['type'], signal['entry'], signal['sl'], balance)
