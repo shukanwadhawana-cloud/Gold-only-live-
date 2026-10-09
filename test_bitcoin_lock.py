@@ -36,3 +36,19 @@ def test_main_forces_live_orders_off(monkeypatch):
     assert os.environ["LIVE_TRADING"] == "false"
     assert os.environ["ALLOW_LIVE_ORDERS"] == "false"
     assert os.environ["VOROA_PAPER_ONLY"] == "true"
+
+
+def test_exchange_filter_minimum_notional_overrides_lower_ccxt_cost_limit():
+    from decimal import Decimal
+    from exchange_adapter import minimum_notional
+
+    market = {
+        "limits": {"cost": {"min": 5}},
+        "info": {
+            "filters": [
+                {"filterType": "MIN_NOTIONAL", "notional": "50"},
+                {"filterType": "LOT_SIZE", "minQty": "0.001"},
+            ]
+        },
+    }
+    assert minimum_notional(market) == Decimal("50")
