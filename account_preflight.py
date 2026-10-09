@@ -8,7 +8,7 @@ the exchange minimums.
 from decimal import Decimal, InvalidOperation
 import os
 
-from exchange_adapter import make_exchange, btc_market, balance_usdt
+from exchange_adapter import make_exchange, btc_market, balance_usdt, minimum_notional
 from market_data import get_btc_bars
 from strategy import latest_executable_signal
 from config import CAPITAL_CAP_USDT, FRESHNESS_BARS, MAX_RISK_USDT, RISK_FRACTION, LEVERAGE
@@ -33,7 +33,7 @@ def market_rules(m):
     limits = m.get("limits") or {}
     precision = m.get("precision") or {}
     amount_min = d((limits.get("amount") or {}).get("min"))
-    cost_min = d((limits.get("cost") or {}).get("min"))
+    cost_min = minimum_notional(m)
     amount_precision = precision.get("amount")
     price_precision = precision.get("price")
     contract_size = d(m.get("contractSize"), Decimal("1"))
