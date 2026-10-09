@@ -48,8 +48,8 @@ class LiveExecutor:
 
         balance = balance_usdt(self.ex)
         sizing = size_for_risk(self.ex, signal['type'], signal['entry'], signal['sl'], balance)
-        if not sizing['qty_meets_min'] or not sizing['notional_meets_min']:
-            raise RuntimeError(f"Capital/risk too small for exchange minimums: {sizing}")
+        if not sizing['qty_meets_min'] or not sizing['notional_meets_min'] or not sizing.get('risk_limit_pass', False):
+            raise RuntimeError(f"Capital/risk/fee limits do not support exchange minimums: {sizing}")
 
         side = 'buy' if signal['type'] == 'BUY' else 'sell'
         order = self.ex.create_order(self.market['symbol'], 'market', side, float(sizing['qty']))
