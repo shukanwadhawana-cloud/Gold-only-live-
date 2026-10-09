@@ -27,6 +27,9 @@ MAX_RISK_USDT = Decimal(os.getenv("MAX_RISK_USDT", "2"))
 # Fee/slippage estimates reserve room inside the $2 total risk budget.
 ESTIMATED_TAKER_FEE_RATE = Decimal(os.getenv("ESTIMATED_TAKER_FEE_RATE", "0.0005"))
 ESTIMATED_SLIPPAGE_RATE = Decimal(os.getenv("ESTIMATED_SLIPPAGE_RATE", "0.0002"))
+# Reserve one 8-hour funding interval by default; actual rates/intervals vary.
+ESTIMATED_FUNDING_RATE_PER_8H = Decimal(os.getenv("ESTIMATED_FUNDING_RATE_PER_8H", "0.0001"))
+ESTIMATED_HOLD_HOURS = Decimal(os.getenv("ESTIMATED_HOLD_HOURS", "8"))
 MAX_OPEN_POSITIONS = int(os.getenv("MAX_OPEN_POSITIONS", "1"))
 
 # Safety defaults: real trading is explicitly OFF until all preflight checks pass.
