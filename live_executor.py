@@ -1,4 +1,4 @@
-"""Exchange execution layer for the Gold-only bot.
+"""Exchange execution layer for the Bitcoin-only bot.
 
 This module is intentionally gated. It is not invoked by the normal runner.
 When enabled, entry is immediately followed by exchange-side SL and TP. If
@@ -7,7 +7,7 @@ protective orders cannot be installed, the position is closed immediately.
 import json
 import os
 from decimal import Decimal
-from exchange_adapter import make_exchange, gold_market, balance_usdt, size_for_risk, set_one_x_leverage
+from exchange_adapter import make_exchange, btc_market, balance_usdt, size_for_risk, set_one_x_leverage
 from config import ALLOWED_SYMBOLS, MAX_OPEN_POSITIONS, STATE_FILE
 
 
@@ -16,7 +16,7 @@ class LiveExecutor:
         if os.getenv('LIVE_TRADING','false').lower() != 'true' or os.getenv('ALLOW_LIVE_ORDERS','false').lower() != 'true':
             raise RuntimeError('Live execution is locked. Set both LIVE_TRADING=true and ALLOW_LIVE_ORDERS=true only after preflight approval.')
         self.ex = make_exchange()
-        self.market = gold_market(self.ex)
+        self.market = btc_market(self.ex)
         if self.market['id'] not in ALLOWED_SYMBOLS:
             raise RuntimeError(f'Unexpected live symbol: {self.market["id"]}')
         set_one_x_leverage(self.ex, self.market)
@@ -44,7 +44,7 @@ class LiveExecutor:
         if signal.get('type') not in ('BUY','SELL'):
             raise ValueError('Only BUY/SELL signals are executable.')
         if self._open_position_exists():
-            raise RuntimeError('An existing Gold position is already open; MAX_OPEN_POSITIONS=1.')
+            raise RuntimeError('An existing Bitcoin position is already open; MAX_OPEN_POSITIONS=1.')
 
         balance = balance_usdt(self.ex)
         sizing = size_for_risk(self.ex, signal['type'], signal['entry'], signal['sl'], balance)
