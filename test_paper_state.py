@@ -3,8 +3,8 @@ import json
 
 
 def load_paper_state(monkeypatch, tmp_path):
-    state_path = tmp_path / "state" / "gold_paper_state.json"
-    audit_path = tmp_path / "state" / "gold_paper_audit.jsonl"
+    state_path = tmp_path / "state" / "bitcoin_paper_state.json"
+    audit_path = tmp_path / "state" / "bitcoin_paper_audit.jsonl"
     monkeypatch.setenv("PAPER_STATE_FILE", str(state_path))
     monkeypatch.setenv("PAPER_AUDIT_FILE", str(audit_path))
     monkeypatch.delenv("RAILWAY_VOLUME_MOUNT_PATH", raising=False)
@@ -23,8 +23,8 @@ def test_railway_volume_is_used_when_explicit_paths_are_not_set(monkeypatch, tmp
     import paper_state
 
     module = importlib.reload(paper_state)
-    assert module.STATE_FILE == mount / "gold_paper_state.json"
-    assert module.AUDIT_FILE == mount / "gold_paper_audit.jsonl"
+    assert module.STATE_FILE == mount / "bitcoin_paper_state.json"
+    assert module.AUDIT_FILE == mount / "bitcoin_paper_audit.jsonl"
     assert module.persistence_info()["durable"] is True
 
 
