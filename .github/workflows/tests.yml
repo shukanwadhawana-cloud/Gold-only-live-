@@ -1,4 +1,4 @@
-name: Gold bot tests
+name: Bitcoin bot tests
 on:
   push:
   workflow_dispatch:
