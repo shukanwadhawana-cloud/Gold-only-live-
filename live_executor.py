@@ -160,22 +160,49 @@ class LiveExecutor:
             if not sl_order or not sl_order.get('id') or not tp_order or not tp_order.get('id'):
                 raise RuntimeError('Binance did not return both protective order IDs.')
         except Exception as exc:
-            cleanup_errors = []
-            for protective in (sl_order, tp_order):
-                if protective and protective.get('id'):
-                    try:
-                        self.ex.cancel_order(protective['id'], self.market['symbol'])
-                    except Exception as cleanup_exc:
-                        cleanup_errors.append(f"cancel {protective['id']}: {cleanup_exc}")
+            # Never cancel an installed stop before the position is confirmed flat.
+            close_error = None
             try:
                 self.ex.create_order(
                     self.market['symbol'], 'market', close_side, float(filled), None, {'reduceOnly': True}
                 )
             except Exception as close_exc:
-                cleanup_errors.append(f"emergency close: {close_exc}")
+                close_error = close_exc
+
+            flat_confirmed = False
+            try:
+                flat_confirmed = not self._open_position_exists()
+            except Exception:
+                flat_confirmed = False
+
+            if flat_confirmed:
+                for protective in (sl_order, tp_order):
+                    if protective and protective.get('id'):
+                        try:
+                            self.ex.cancel_order(protective['id'], self.market['symbol'])
+                        except Exception:
+                            pass
+            else:
+                # Persist the uncertain position so restart reconciliation blocks new entries.
+                emergency_state = {
+                    'symbol': self.market['id'], 'ccxt_symbol': self.market['symbol'],
+                    'direction': signal['type'], 'entry': str(avg), 'sl': str(actual_sl),
+                    'tp': str(actual_tp), 'qty': str(filled), 'initial_r': str(initial_r),
+                    'locked_level_r': '0',
+                    'sl_order_id': sl_order.get('id') if sl_order else None,
+                    'tp_order_id': tp_order.get('id') if tp_order else None,
+                    'entry_order_id': order.get('id'), 'protection_setup_error': str(exc),
+                }
+                tmp = STATE_FILE + '.tmp'
+                with open(tmp, 'w') as f:
+                    json.dump(emergency_state, f, indent=2)
+                os.replace(tmp, STATE_FILE)
+
             detail = f"Protective-order setup failed: {exc}"
-            if cleanup_errors:
-                detail += " | cleanup: " + "; ".join(cleanup_errors)
+            if close_error:
+                detail += f" | emergency close failed: {close_error}"
+            if not flat_confirmed:
+                detail += " | position may remain open; any installed protective orders were retained and state persisted for reconciliation."
             raise RuntimeError(detail) from exc
 
         state = {
