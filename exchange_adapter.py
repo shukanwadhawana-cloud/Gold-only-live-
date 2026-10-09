@@ -7,7 +7,7 @@ LIVE_TRADING and ALLOW_LIVE_ORDERS are true.
 from decimal import Decimal
 import os
 import ccxt
-from config import SYMBOL, CAPITAL_CAP_USDT, risk_budget, LEVERAGE, ESTIMATED_TAKER_FEE_RATE, ESTIMATED_SLIPPAGE_RATE
+from config import (SYMBOL, CAPITAL_CAP_USDT, risk_budget, LEVERAGE, ESTIMATED_TAKER_FEE_RATE, ESTIMATED_SLIPPAGE_RATE, ESTIMATED_FUNDING_RATE_PER_8H, ESTIMATED_HOLD_HOURS)
 
 
 def make_exchange():
@@ -133,7 +133,8 @@ def size_for_risk(ex, direction, entry, sl, balance):
     estimated_stop_loss = qty * risk_per_contract
     estimated_round_trip_fee = notional * Decimal("2") * ESTIMATED_TAKER_FEE_RATE
     estimated_round_trip_slippage = notional * Decimal("2") * ESTIMATED_SLIPPAGE_RATE
-    estimated_total_risk = estimated_stop_loss + estimated_round_trip_fee + estimated_round_trip_slippage
+    estimated_funding_cost = notional * ESTIMATED_FUNDING_RATE_PER_8H * ESTIMATED_HOLD_HOURS / Decimal("8")
+    estimated_total_risk = estimated_stop_loss + estimated_round_trip_fee + estimated_round_trip_slippage + estimated_funding_cost
 
     return {
         "symbol": m["symbol"],
