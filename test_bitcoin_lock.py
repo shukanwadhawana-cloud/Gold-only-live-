@@ -17,6 +17,8 @@ def test_bot_is_hard_locked_to_bitcoin_and_preserves_risk(monkeypatch):
     assert str(config.RISK_FRACTION) == "0.10"
     assert str(config.ESTIMATED_TAKER_FEE_RATE) == "0.0005"
     assert str(config.ESTIMATED_SLIPPAGE_RATE) == "0.0002"
+    assert str(config.ESTIMATED_FUNDING_RATE_PER_8H) == "0.0001"
+    assert str(config.ESTIMATED_HOLD_HOURS) == "8"
 
 
 def test_market_data_rejects_non_bitcoin_without_exchange_access():
