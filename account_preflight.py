@@ -37,12 +37,24 @@ def market_rules(m):
     amount_precision = precision.get("amount")
     price_precision = precision.get("price")
     contract_size = d(m.get("contractSize"), Decimal("1"))
+    amount_step = Decimal("0")
+    price_tick = Decimal("0")
+    for rule in ((m.get("info") or {}).get("filters") or []):
+        kind = str(rule.get("filterType", "")).upper()
+        if kind in {"LOT_SIZE", "MARKET_LOT_SIZE"} and rule.get("stepSize"):
+            step = d(rule.get("stepSize"))
+            if step > amount_step:
+                amount_step = step
+        if kind == "PRICE_FILTER" and rule.get("tickSize"):
+            price_tick = d(rule.get("tickSize"))
     return {
         "min_qty": amount_min,
         "min_notional": cost_min,
         "amount_precision": amount_precision,
         "price_precision": price_precision,
         "contract_size": contract_size,
+        "amount_step": amount_step,
+        "price_tick": price_tick,
     }
 
 
@@ -64,14 +76,8 @@ def feasibility(balance, entry, sl, rules):
         capital_qty = active / (entry * rules["contract_size"])
         raw_qty = min(risk_qty, capital_qty)
 
-        # Let CCXT apply exchange precision/step rules where possible.
-        qty = raw_qty
-        if rules["amount_precision"] is not None:
-            # CCXT precision may be decimal places for Binance.
-            try:
-                qty = d(str(raw_qty))
-            except Exception:
-                pass
+        # Round DOWN to the actual exchange step size; never round risk upward.
+        qty = floor_to_step(raw_qty, rules.get("amount_step", Decimal("0")))
 
         notional = qty * entry * rules["contract_size"]
         meets_qty = qty >= rules["min_qty"]
@@ -108,9 +114,6 @@ def main():
     print("Order modification/cancellation: NEVER")
     print("Credentials: read from environment only; never printed")
 
-    if not os.getenv("BINANCE_API_KEY") or not os.getenv("BINANCE_API_SECRET"):
-        raise SystemExit("PREFLIGHT_BLOCKED: BINANCE_API_KEY/BINANCE_API_SECRET are not configured.")
-
     ex = make_exchange()
 
     # Authentication/account permission check.
@@ -139,7 +142,26 @@ def main():
     print(f"Minimum notional: {rules['min_notional']}")
     print(f"Price precision: {rules['price_precision']}")
     print(f"Amount precision: {rules['amount_precision']}")
+    print(f"Amount step size: {rules['amount_step']}")
+    print(f"Price tick size: {rules['price_tick']}")
     print(f"Current BTC price: {last}")
+    print(f"Market order support advertised: {bool((ex.has or {}).get('createOrder'))}")
+    try:
+        funding = ex.fetch_funding_rate(symbol)
+        current_funding = d(funding.get("fundingRate"))
+        print(f"Current funding rate: {current_funding}")
+        print(f"Funding rate reserve per 8h: {ESTIMATED_FUNDING_RATE_PER_8H}")
+        if abs(current_funding) > ESTIMATED_FUNDING_RATE_PER_8H:
+            raise SystemExit("PREFLIGHT_BLOCKED: current funding rate exceeds configured funding reserve; update reserve and rerun.")
+    except SystemExit:
+        raise
+    except Exception as exc:
+        print(f"Funding-rate check unavailable: {type(exc).__name__}: {exc}")
+        raise SystemExit("PREFLIGHT_BLOCKED: could not verify current funding rate.")
+
+    if not os.getenv("BINANCE_API_KEY") or not os.getenv("BINANCE_API_SECRET"):
+        print("\nPREFLIGHT BLOCKED: public market checks completed, but authenticated account balance, actual taker fee tier, open positions/orders, and private order permissions cannot be verified without API credentials in the worker environment.")
+        raise SystemExit(2)
 
     # Strategy signal check is deliberately read-only and uses the same signal engine.
     df15 = get_btc_bars("15m")
