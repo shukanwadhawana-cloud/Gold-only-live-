@@ -7,7 +7,7 @@ LIVE_TRADING and ALLOW_LIVE_ORDERS are true.
 from decimal import Decimal
 import os
 import ccxt
-from config import SYMBOL, CAPITAL_CAP_USDT, risk_budget, LEVERAGE
+from config import SYMBOL, CAPITAL_CAP_USDT, risk_budget, LEVERAGE, ESTIMATED_TAKER_FEE_RATE, ESTIMATED_SLIPPAGE_RATE
 
 
 def make_exchange():
@@ -114,7 +114,11 @@ def size_for_risk(ex, direction, entry, sl, balance):
 
     contract_size = Decimal(str(m.get("contractSize") or 1))
     risk_per_contract = price_risk * contract_size
-    raw_qty = risk_budget_usdt / risk_per_contract
+    # Reserve round-trip taker fees and slippage within the same $2 risk cap.
+    round_trip_cost_rate = Decimal("2") * (ESTIMATED_TAKER_FEE_RATE + ESTIMATED_SLIPPAGE_RATE)
+    estimated_cost_per_contract = Decimal(str(entry)) * contract_size * round_trip_cost_rate
+    total_risk_per_contract = risk_per_contract + estimated_cost_per_contract
+    raw_qty = risk_budget_usdt / total_risk_per_contract
     # At hard-locked 1x, notional cannot exceed the active capital allocation.
     capital_cap = min(Decimal(str(balance)), CAPITAL_CAP_USDT)
     capital_qty = capital_cap / (Decimal(str(entry)) * contract_size)
@@ -126,6 +130,10 @@ def size_for_risk(ex, direction, entry, sl, balance):
     min_qty = Decimal(str(amount_min)) if amount_min else Decimal("0")
     min_cost = minimum_notional(m)
     notional = qty * Decimal(str(entry)) * contract_size
+    estimated_stop_loss = qty * risk_per_contract
+    estimated_round_trip_fee = notional * Decimal("2") * ESTIMATED_TAKER_FEE_RATE
+    estimated_round_trip_slippage = notional * Decimal("2") * ESTIMATED_SLIPPAGE_RATE
+    estimated_total_risk = estimated_stop_loss + estimated_round_trip_fee + estimated_round_trip_slippage
 
     return {
         "symbol": m["symbol"],
@@ -140,6 +148,11 @@ def size_for_risk(ex, direction, entry, sl, balance):
         "qty_meets_min": qty >= min_qty,
         "notional_meets_min": notional >= min_cost,
         "capital_cap_usdt": min(balance, CAPITAL_CAP_USDT),
+        "estimated_stop_loss_usdt": estimated_stop_loss,
+        "estimated_round_trip_fee_usdt": estimated_round_trip_fee,
+        "estimated_round_trip_slippage_usdt": estimated_round_trip_slippage,
+        "estimated_total_risk_usdt": estimated_total_risk,
+        "risk_limit_pass": estimated_total_risk <= risk_budget_usdt,
     }
 
 
