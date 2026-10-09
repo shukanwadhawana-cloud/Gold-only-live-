@@ -106,7 +106,7 @@ def main():
     try:
         market = btc_market(ex)
     except Exception as exc:
-        raise SystemExit(f"XAU_MARKET_CHECK_FAILED: {type(exc).__name__}: {exc}")
+        raise SystemExit(f"BTC_MARKET_CHECK_FAILED: {type(exc).__name__}: {exc}")
 
     rules = market_rules(market)
     symbol = market["symbol"]
@@ -114,8 +114,8 @@ def main():
     last = d(ticker.get("last"))
 
     print(f"Account USDT total: {balance}")
-    print(f"XAUT exchange id: {market.get('id')}")
-    print(f"XAU CCXT symbol: {symbol}")
+    print(f"BTC exchange id: {market.get('id')}")
+    print(f"BTC CCXT symbol: {symbol}")
     print(f"Active: {market.get('active')}")
     print(f"Contract: {market.get('contract')} | Swap: {market.get('swap')} | Leverage lock: {LEVERAGE}x")
     print(f"Contract size: {rules['contract_size']}")
@@ -123,7 +123,7 @@ def main():
     print(f"Minimum notional: {rules['min_notional']}")
     print(f"Price precision: {rules['price_precision']}")
     print(f"Amount precision: {rules['amount_precision']}")
-    print(f"Current XAUT price: {last}")
+    print(f"Current BTC price: {last}")
 
     # Strategy signal check is deliberately read-only and uses the same signal engine.
     df15 = get_btc_bars("15m")
