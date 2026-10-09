@@ -23,6 +23,7 @@ def build_plan(ex, signal, balance_usdt):
         'estimated_stop_loss_usdt': sizing['estimated_stop_loss_usdt'],
         'estimated_round_trip_fee_usdt': sizing['estimated_round_trip_fee_usdt'],
         'estimated_round_trip_slippage_usdt': sizing['estimated_round_trip_slippage_usdt'],
+        'estimated_funding_cost_usdt': sizing['estimated_funding_cost_usdt'],
         'estimated_total_risk_usdt': sizing['estimated_total_risk_usdt'],
         'risk_limit_pass': sizing['risk_limit_pass'],
         'min_qty': sizing['min_qty'], 'min_notional': sizing['min_notional'],

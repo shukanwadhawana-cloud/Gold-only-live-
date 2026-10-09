@@ -11,7 +11,7 @@ import os
 from exchange_adapter import make_exchange, btc_market, balance_usdt, minimum_notional
 from market_data import get_btc_bars
 from strategy import latest_executable_signal
-from config import (CAPITAL_CAP_USDT, FRESHNESS_BARS, MAX_RISK_USDT, RISK_FRACTION, LEVERAGE, ESTIMATED_TAKER_FEE_RATE, ESTIMATED_SLIPPAGE_RATE)
+from config import (CAPITAL_CAP_USDT, FRESHNESS_BARS, MAX_RISK_USDT, RISK_FRACTION, LEVERAGE, ESTIMATED_TAKER_FEE_RATE, ESTIMATED_SLIPPAGE_RATE, ESTIMATED_FUNDING_RATE_PER_8H, ESTIMATED_HOLD_HOURS)
 
 CAPS = tuple(sorted({Decimal("5"), Decimal("10"), Decimal("20"), Decimal("50"), CAPITAL_CAP_USDT}))
 
@@ -57,7 +57,8 @@ def feasibility(balance, entry, sl, rules):
         risk = min(MAX_RISK_USDT, active * RISK_FRACTION)
         risk_per_contract = price_risk * rules["contract_size"]
         round_trip_cost_rate = Decimal("2") * (ESTIMATED_TAKER_FEE_RATE + ESTIMATED_SLIPPAGE_RATE)
-        estimated_cost_per_contract = entry * rules["contract_size"] * round_trip_cost_rate
+        funding_reserve_rate = ESTIMATED_FUNDING_RATE_PER_8H * ESTIMATED_HOLD_HOURS / Decimal("8")
+        estimated_cost_per_contract = entry * rules["contract_size"] * (round_trip_cost_rate + funding_reserve_rate)
         total_risk_per_contract = risk_per_contract + estimated_cost_per_contract
         risk_qty = risk / total_risk_per_contract
         capital_qty = active / (entry * rules["contract_size"])
@@ -78,7 +79,8 @@ def feasibility(balance, entry, sl, rules):
         estimated_stop_loss = qty * risk_per_contract
         estimated_round_trip_fee = notional * Decimal("2") * ESTIMATED_TAKER_FEE_RATE
         estimated_round_trip_slippage = notional * Decimal("2") * ESTIMATED_SLIPPAGE_RATE
-        estimated_total_risk = estimated_stop_loss + estimated_round_trip_fee + estimated_round_trip_slippage
+        estimated_funding_cost = notional * ESTIMATED_FUNDING_RATE_PER_8H * ESTIMATED_HOLD_HOURS / Decimal("8")
+        estimated_total_risk = estimated_stop_loss + estimated_round_trip_fee + estimated_round_trip_slippage + estimated_funding_cost
         risk_limit_pass = estimated_total_risk <= risk
         results.append({
             "cap": cap,
@@ -93,6 +95,7 @@ def feasibility(balance, entry, sl, rules):
             "estimated_stop_loss_usdt": estimated_stop_loss,
             "estimated_round_trip_fee_usdt": estimated_round_trip_fee,
             "estimated_round_trip_slippage_usdt": estimated_round_trip_slippage,
+            "estimated_funding_cost_usdt": estimated_funding_cost,
             "estimated_total_risk_usdt": estimated_total_risk,
             "risk_limit_pass": risk_limit_pass,
         })
@@ -164,6 +167,7 @@ def main():
             f"notional={row['notional']} | est. SL={row['estimated_stop_loss_usdt']:.4f} | "
             f"fees={row['estimated_round_trip_fee_usdt']:.4f} | "
             f"slippage={row['estimated_round_trip_slippage_usdt']:.4f} | "
+            f"funding reserve={row['estimated_funding_cost_usdt']:.4f} | "
             f"total risk={row['estimated_total_risk_usdt']:.4f}/"
             f"{row['risk_budget']} | minimums={'PASS' if row['meets_minimums'] else 'FAIL'}"
         )
