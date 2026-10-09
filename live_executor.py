@@ -190,6 +190,21 @@ class LiveExecutor:
         return state
 
     def advance_trailing_stop(self, state, new_stop):
+        new_stop = Decimal(str(new_stop))
+        old_stop = Decimal(str(state['sl']))
+        tick = _price_tick(self.market)
+        if state['direction'] == 'BUY':
+            if new_stop <= old_stop:
+                raise ValueError('A BUY trailing stop may only move upward; refusing to loosen protection.')
+            new_stop = _round_to_tick(new_stop, tick, ROUND_FLOOR)
+            if new_stop <= old_stop:
+                raise ValueError('Tick rounding would loosen a BUY trailing stop.')
+        else:
+            if new_stop >= old_stop:
+                raise ValueError('A SELL trailing stop may only move downward; refusing to loosen protection.')
+            new_stop = _round_to_tick(new_stop, tick, ROUND_CEILING)
+            if new_stop >= old_stop:
+                raise ValueError('Tick rounding would loosen a SELL trailing stop.')
         old_id = state.get('sl_order_id')
         close_side = 'sell' if state['direction'] == 'BUY' else 'buy'
         # Install the replacement stop before cancelling the old one so a
