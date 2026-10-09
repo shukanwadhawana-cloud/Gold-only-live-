@@ -13,6 +13,42 @@ from config import (ALLOWED_SYMBOLS, MAX_OPEN_POSITIONS, STATE_FILE, RR_RATIO,
                     ESTIMATED_FUNDING_RATE_PER_8H, ESTIMATED_HOLD_HOURS)
 
 
+def _round_to_tick(price, tick, rounding):
+    price = Decimal(str(price))
+    tick = Decimal(str(tick))
+    if tick <= 0:
+        raise ValueError('Exchange did not provide a valid price tick size.')
+    return (price / tick).to_integral_value(rounding=rounding) * tick
+
+
+def _price_tick(market):
+    for rule in ((market.get('info') or {}).get('filters') or []):
+        if str(rule.get('filterType', '')).upper() == 'PRICE_FILTER' and rule.get('tickSize'):
+            return Decimal(str(rule['tickSize']))
+    raise RuntimeError('Binance PRICE_FILTER tickSize is missing; cannot safely place protective orders.')
+
+
+def _protection_prices(market, direction, fill_price, initial_stop):
+    tick = _price_tick(market)
+    fill_price = Decimal(str(fill_price))
+    initial_stop = Decimal(str(initial_stop))
+    if direction == 'BUY':
+        if initial_stop >= fill_price:
+            raise ValueError('Filled BUY entry is not above its stop-loss.')
+        stop = _round_to_tick(initial_stop, tick, ROUND_FLOOR)
+        initial_r = fill_price - stop
+        take_profit = _round_to_tick(fill_price + RR_RATIO * initial_r, tick, ROUND_CEILING)
+    else:
+        if initial_stop <= fill_price:
+            raise ValueError('Filled SELL entry is not below its stop-loss.')
+        stop = _round_to_tick(initial_stop, tick, ROUND_CEILING)
+        initial_r = stop - fill_price
+        take_profit = _round_to_tick(fill_price - RR_RATIO * initial_r, tick, ROUND_FLOOR)
+    if initial_r <= 0:
+        raise ValueError('Rounded stop-loss leaves no positive risk distance.')
+    return stop, take_profit, initial_r
+
+
 class LiveExecutor:
     def __init__(self):
         if os.getenv('LIVE_TRADING','false').lower() != 'true' or os.getenv('ALLOW_LIVE_ORDERS','false').lower() != 'true':
@@ -97,16 +133,32 @@ class LiveExecutor:
 
         side = 'buy' if signal['type'] == 'BUY' else 'sell'
         order = self.ex.create_order(self.market['symbol'], 'market', side, float(sizing['qty']))
-        filled = Decimal(str(order.get('filled') or sizing['qty']))
-        avg = Decimal(str(order.get('average') or order.get('price') or signal['entry']))
+        filled_raw = order.get('filled')
+        if (filled_raw is None or Decimal(str(filled_raw)) <= 0) and order.get('id'):
+            try:
+                refreshed = self.ex.fetch_order(order['id'], self.market['symbol'])
+                filled_raw = refreshed.get('filled')
+                order = refreshed
+            except Exception:
+                pass
+        if filled_raw is None or Decimal(str(filled_raw)) <= 0:
+            raise RuntimeError('Entry fill quantity is unconfirmed; refusing to guess protection size. Reconcile exchange position immediately.')
+        filled = Decimal(str(filled_raw))
+        avg_raw = order.get('average') or order.get('price')
+        if avg_raw is None:
+            raise RuntimeError('Entry fill price is unconfirmed; refusing to calculate protection from signal price.')
+        avg = Decimal(str(avg_raw))
+        actual_sl, actual_tp, initial_r = _protection_prices(self.market, signal['type'], avg, signal['sl'])
         close_side = 'sell' if signal['type'] == 'BUY' else 'buy'
 
         sl_order = tp_order = None
         try:
             sl_order = self.ex.create_order(self.market['symbol'], 'STOP_MARKET', close_side, float(filled), None,
-                                            {'stopPrice': float(signal['sl']), 'reduceOnly': True, 'workingType': 'MARK_PRICE'})
+                                            {'stopPrice': float(actual_sl), 'reduceOnly': True, 'workingType': 'MARK_PRICE'})
             tp_order = self.ex.create_order(self.market['symbol'], 'TAKE_PROFIT_MARKET', close_side, float(filled), None,
-                                            {'stopPrice': float(signal['tp']), 'reduceOnly': True, 'workingType': 'MARK_PRICE'})
+                                            {'stopPrice': float(actual_tp), 'reduceOnly': True, 'workingType': 'MARK_PRICE'})
+            if not sl_order or not sl_order.get('id') or not tp_order or not tp_order.get('id'):
+                raise RuntimeError('Binance did not return both protective order IDs.')
         except Exception as exc:
             cleanup_errors = []
             for protective in (sl_order, tp_order):
