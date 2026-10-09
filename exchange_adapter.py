@@ -1,6 +1,6 @@
-"""Binance-first Gold-only exchange adapter.
+"""Binance-first Bitcoin-only exchange adapter.
 
-The adapter discovers the actual XAUTUSDT market from exchange metadata rather
+The adapter discovers the actual BTCUSDT market from exchange metadata rather
 than guessing a CCXT symbol. Live order placement is blocked unless both
 LIVE_TRADING and ALLOW_LIVE_ORDERS are true.
 """
@@ -13,7 +13,7 @@ from config import SYMBOL, CAPITAL_CAP_USDT, risk_budget, LEVERAGE
 def make_exchange():
     name = os.getenv("EXCHANGE", "binance").lower()
     if name != "binance":
-        raise ValueError("This live build is intentionally Binance-only. Use Binance XAUTUSDT perpetual.")
+        raise ValueError("This live build is intentionally Binance-only. Use Binance BTCUSDT perpetual.")
     ex = ccxt.binance({
         "enableRateLimit": True,
         "apiKey": os.getenv("BINANCE_API_KEY", ""),
@@ -25,12 +25,12 @@ def make_exchange():
     return ex
 
 
-def gold_market(ex=None):
+def btc_market(ex=None):
     ex = ex or make_exchange()
     markets = ex.load_markets()
     matches = [m for m in markets.values() if str(m.get("id", "")).upper() == SYMBOL and m.get("contract") and m.get("swap") and str(m.get("settle", "")).upper() == "USDT"]
     if not matches:
-        raise RuntimeError("Binance account/API did not expose the XAUTUSDT USDⓈ-M perpetual.")
+        raise RuntimeError("Binance account/API did not expose the BTCUSDT USDⓈ-M perpetual.")
     return matches[0]
 
 
@@ -45,7 +45,7 @@ def set_one_x_leverage(ex, market):
 
 
 def market_info():
-    ex = make_exchange(); m = gold_market(ex)
+    ex = make_exchange(); m = btc_market(ex)
     return {
         "exchange": "binance",
         "id": m["id"],
@@ -72,7 +72,7 @@ def balance_usdt(ex=None):
 
 
 def ticker(ex=None):
-    ex = ex or make_exchange(); m = gold_market(ex)
+    ex = ex or make_exchange(); m = btc_market(ex)
     return ex.fetch_ticker(m["symbol"])
 
 
@@ -85,7 +85,7 @@ def _floor_amount(ex, symbol, amount):
 
 def size_for_risk(ex, direction, entry, sl, balance):
     """Calculate quantity using the exchange's actual contract size and limits."""
-    m = gold_market(ex)
+    m = btc_market(ex)
     risk_budget_usdt = risk_budget(balance)
     price_risk = abs(Decimal(str(entry)) - Decimal(str(sl)))
     if price_risk <= 0:
@@ -124,7 +124,7 @@ def size_for_risk(ex, direction, entry, sl, balance):
 
 
 def account_snapshot():
-    ex = make_exchange(); m = gold_market(ex); bal = balance_usdt(ex)
+    ex = make_exchange(); m = btc_market(ex); bal = balance_usdt(ex)
     tick = ex.fetch_ticker(m["symbol"])
     return {
         "balance_usdt": str(bal),
@@ -142,7 +142,7 @@ def account_snapshot():
 def open_market(direction, amount, price=None):
     if os.getenv("LIVE_TRADING", "false").lower() != "true" or os.getenv("ALLOW_LIVE_ORDERS", "false").lower() != "true":
         raise RuntimeError("LIVE_TRADING/ALLOW_LIVE_ORDERS are not both true; live order blocked.")
-    ex = make_exchange(); m = gold_market(ex); set_one_x_leverage(ex, m)
+    ex = make_exchange(); m = btc_market(ex); set_one_x_leverage(ex, m)
     side = "buy" if direction == "BUY" else "sell"
     return ex.create_order(m["symbol"], "market", side, float(amount))
 
@@ -150,7 +150,7 @@ def open_market(direction, amount, price=None):
 def protective_order(order_type, direction, amount, stop_price):
     if os.getenv("LIVE_TRADING", "false").lower() != "true" or os.getenv("ALLOW_LIVE_ORDERS", "false").lower() != "true":
         raise RuntimeError("Live protective order blocked by safety gate.")
-    ex = make_exchange(); m = gold_market(ex)
+    ex = make_exchange(); m = btc_market(ex)
     close_side = "sell" if direction == "BUY" else "buy"
     params = {"stopPrice": float(stop_price), "reduceOnly": True, "workingType": "MARK_PRICE"}
     return ex.create_order(m["symbol"], order_type, close_side, float(amount), None, params)
@@ -163,6 +163,6 @@ def close_market(direction, amount):
 def _close_market(direction, amount):
     if os.getenv("LIVE_TRADING", "false").lower() != "true" or os.getenv("ALLOW_LIVE_ORDERS", "false").lower() != "true":
         raise RuntimeError("Live close blocked by safety gate.")
-    ex = make_exchange(); m = gold_market(ex)
+    ex = make_exchange(); m = btc_market(ex)
     side = "sell" if direction == "BUY" else "buy"
     return ex.create_order(m["symbol"], "market", side, float(amount), None, {"reduceOnly": True})
