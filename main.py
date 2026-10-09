@@ -1,11 +1,11 @@
-"""Gold-only Voroa entry point.
+"""Bitcoin-only Voroa entry point.
 
 The continuous paper worker is only imported when this file is executed as a
 process. Vercel imports this module as a Python function, so keeping the worker
 import lazy prevents optional runtime dependencies or the worker loop from
 being loaded in the serverless environment.
 
-Vercel is NOT the Gold worker runtime; it only exposes a read-only health app.
+Vercel is NOT the Bitcoin worker runtime; it only exposes a read-only health app.
 """
 import os
 
@@ -18,7 +18,7 @@ os.environ["VOROA_PAPER_ONLY"] = "true"
 
 def app(environ, start_response):
     """Read-only deployment health endpoint; never starts the trading loop."""
-    body = b"gold-only-live paper worker: deployment healthy; worker not running on Vercel\n"
+    body = b"bitcoin-only-live paper worker: deployment healthy; worker not running on Vercel\n"
     start_response(
         "200 OK",
         [
