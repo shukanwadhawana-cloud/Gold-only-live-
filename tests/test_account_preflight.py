@@ -24,6 +24,7 @@ def test_small_capital_feasibility_uses_contract_size():
     assert rows[0]["meets_minimums"] is True
     assert rows[0]["estimated_round_trip_fee_usdt"] > 0
     assert rows[0]["estimated_round_trip_slippage_usdt"] > 0
+    assert rows[0]["estimated_funding_cost_usdt"] > 0
     assert rows[0]["estimated_total_risk_usdt"] <= rows[0]["risk_budget"]
     assert rows[0]["risk_limit_pass"] is True
 
