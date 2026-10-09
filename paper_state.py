@@ -14,8 +14,8 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 
-DEFAULT_STATE_NAME = "gold_paper_state.json"
-DEFAULT_AUDIT_NAME = "gold_paper_audit.jsonl"
+DEFAULT_STATE_NAME = "bitcoin_paper_state.json"
+DEFAULT_AUDIT_NAME = "bitcoin_paper_audit.jsonl"
 
 
 def _runtime_path(env_name: str, default_name: str) -> Path:

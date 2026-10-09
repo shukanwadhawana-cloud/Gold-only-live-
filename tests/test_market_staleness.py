@@ -1,22 +1,22 @@
 import pandas as pd
 from decimal import Decimal
 
-from paper_runtime import gold_market_closed, stale_bar, trail_stop
+from paper_runtime import btc_market_closed, stale_bar, trail_stop
 
 
-def test_saturday_xaut_perpetual_is_open():
+def test_saturday_bitcoin_perpetual_is_open():
     now = pd.Timestamp("2026-09-19 17:00:00", tz="UTC")
-    assert not gold_market_closed(now)
+    assert not btc_market_closed(now)
 
 
-def test_sunday_xaut_perpetual_is_open():
+def test_sunday_bitcoin_perpetual_is_open():
     now = pd.Timestamp("2026-09-20 20:00:00", tz="UTC")
-    assert not gold_market_closed(now)
+    assert not btc_market_closed(now)
 
 
 def test_weekday_open_window_is_not_closed():
     now = pd.Timestamp("2026-09-21 17:00:00", tz="UTC")
-    assert not gold_market_closed(now)
+    assert not btc_market_closed(now)
 
 
 def test_stale_bar_after_three_intervals():

@@ -1,4 +1,4 @@
-"""Continuous, restart-safe Gold-only paper runtime for Voroa.
+"""Continuous, restart-safe Bitcoin-only paper runtime for Voroa.
 
 No Binance authentication, Telegram, or real orders are used here.
 Only closed candles are used for signals and exits. State/audit files make the
@@ -11,7 +11,7 @@ import time
 from decimal import Decimal, ROUND_FLOOR
 
 from config import CAPITAL_CAP_USDT, MAX_RISK_USDT, RISK_FRACTION, FRESHNESS_BARS, TRAIL_STEP_R
-from market_data import get_gold_bars
+from market_data import get_btc_bars
 from paper_state import audit, load_state, persistence_info, reconcile_trade_stats, save_state
 from strategy import latest_executable_signal
 
@@ -21,8 +21,8 @@ TIMEFRAME_SECONDS = 15 * 60
 STALE_BAR_MULTIPLIER = 3
 
 
-def gold_market_closed(now) -> bool:
-    """XAUTUSDT perpetual trades 24/7; no scheduled market closure is applied."""
+def btc_market_closed(now) -> bool:
+    """BTCUSDT perpetual trades 24/7; no scheduled market closure is applied."""
     return False
 
 
@@ -125,7 +125,7 @@ def close_position(state: dict, reason: str, exit_price: Decimal, bar_time, sign
 
 
 def run() -> None:
-    print("=== GOLD-ONLY PAPER RUNTIME ===", flush=True)
+    print("=== BITCOIN-ONLY PAPER RUNTIME ===", flush=True)
     print("Mode: PAPER / READ-ONLY MARKET DATA", flush=True)
     print("Exchange authentication: NOT USED", flush=True)
     print("Live orders: BLOCKED", flush=True)
@@ -160,10 +160,10 @@ def run() -> None:
     while True:
         cycle += 1
         try:
-            df15 = get_gold_bars("15m")
-            df1h = get_gold_bars("1h")
+            df15 = get_btc_bars("15m")
+            df1h = get_btc_bars("1h")
             if len(df15) < 100 or len(df1h) < 50:
-                print(f"CYCLE {cycle}: insufficient Gold candles; retrying.", flush=True)
+                print(f"CYCLE {cycle}: insufficient Bitcoin candles; retrying.", flush=True)
                 time.sleep(POLL_SECONDS)
                 continue
 
@@ -175,18 +175,18 @@ def run() -> None:
             bar_time = df15.index[-2]
             now = __import__("pandas").Timestamp.now(tz="UTC")
 
-            # XAUTUSDT is a 24/7 perpetual. Stale data is always fail-closed:
+            # BTCUSDT is a 24/7 perpetual. Stale data is always fail-closed:
             # no signals or trades when completed candles stop advancing.
             if stale_bar(bar_time, now):
-                if gold_market_closed(now):
+                if btc_market_closed(now):
                     print(
-                        f"CYCLE {cycle}: GOLD MARKET CLOSED | last_closed_bar={bar_time} | waiting for reopen.",
+                        f"CYCLE {cycle}: BITCOIN MARKET CLOSED | last_closed_bar={bar_time} | waiting for reopen.",
                         flush=True,
                     )
                 else:
                     age_minutes = (now - bar_time).total_seconds() / 60.0
                     print(
-                        f"CYCLE {cycle}: STALE GOLD DATA | last_closed_bar={bar_time} | "
+                        f"CYCLE {cycle}: STALE BITCOIN DATA | last_closed_bar={bar_time} | "
                         f"age={age_minutes:.1f}m | signals/orders skipped.",
                         flush=True,
                     )

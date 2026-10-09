@@ -1,4 +1,4 @@
-name: Gold-only CI
+name: Bitcoin-only CI
 
 on:
   workflow_dispatch:
@@ -24,6 +24,6 @@ jobs:
       - name: Run tests
         run: pytest -q
 
-# This repository workflow is CI/preflight only. The continuous Gold worker
+# This repository workflow is CI/preflight only. The continuous Bitcoin worker
 # must run in a persistent worker environment, not as an unbounded
 # GitHub-hosted job. GitHub-hosted jobs have a 6-hour execution limit.

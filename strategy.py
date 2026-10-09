@@ -1,4 +1,4 @@
-"""Gold-only SMC strategy core.
+"""Bitcoin-only SMC strategy core.
 
 This is intentionally isolated from exchange execution and notifications.
 The logic mirrors the existing paper bot: 15m BOS/CHoCH, ATR-adjusted

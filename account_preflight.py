@@ -1,15 +1,15 @@
-"""Read-only Binance account and XAUTUSDT feasibility preflight.
+"""Read-only Binance account and BTCUSDT feasibility preflight.
 
 This module NEVER places, modifies, or cancels an order. It checks the
-authenticated account, discovers the live XAUTUSDT contract rules, and—when a
+authenticated account, discovers the live BTCUSDT contract rules, and—when a
 fresh strategy signal exists—calculates whether small capital caps can meet
 the exchange minimums.
 """
 from decimal import Decimal, InvalidOperation
 import os
 
-from exchange_adapter import make_exchange, gold_market, balance_usdt
-from market_data import get_gold_bars
+from exchange_adapter import make_exchange, btc_market, balance_usdt, minimum_notional
+from market_data import get_btc_bars
 from strategy import latest_executable_signal
 from config import CAPITAL_CAP_USDT, FRESHNESS_BARS, MAX_RISK_USDT, RISK_FRACTION, LEVERAGE
 
@@ -33,7 +33,7 @@ def market_rules(m):
     limits = m.get("limits") or {}
     precision = m.get("precision") or {}
     amount_min = d((limits.get("amount") or {}).get("min"))
-    cost_min = d((limits.get("cost") or {}).get("min"))
+    cost_min = minimum_notional(m)
     amount_precision = precision.get("amount")
     price_precision = precision.get("price")
     contract_size = d(m.get("contractSize"), Decimal("1"))
@@ -87,7 +87,7 @@ def feasibility(balance, entry, sl, rules):
 
 
 def main():
-    print("=== BINANCE GOLD ACCOUNT PREFLIGHT (READ ONLY) ===")
+    print("=== BINANCE BITCOIN ACCOUNT PREFLIGHT (READ ONLY) ===")
     print("Order placement: NEVER")
     print("Order modification/cancellation: NEVER")
     print("Credentials: read from environment only; never printed")
@@ -104,9 +104,9 @@ def main():
         raise SystemExit(f"ACCOUNT_CHECK_FAILED: {type(exc).__name__}: {exc}")
 
     try:
-        market = gold_market(ex)
+        market = btc_market(ex)
     except Exception as exc:
-        raise SystemExit(f"XAU_MARKET_CHECK_FAILED: {type(exc).__name__}: {exc}")
+        raise SystemExit(f"BTC_MARKET_CHECK_FAILED: {type(exc).__name__}: {exc}")
 
     rules = market_rules(market)
     symbol = market["symbol"]
@@ -114,8 +114,8 @@ def main():
     last = d(ticker.get("last"))
 
     print(f"Account USDT total: {balance}")
-    print(f"XAUT exchange id: {market.get('id')}")
-    print(f"XAU CCXT symbol: {symbol}")
+    print(f"BTC exchange id: {market.get('id')}")
+    print(f"BTC CCXT symbol: {symbol}")
     print(f"Active: {market.get('active')}")
     print(f"Contract: {market.get('contract')} | Swap: {market.get('swap')} | Leverage lock: {LEVERAGE}x")
     print(f"Contract size: {rules['contract_size']}")
@@ -123,18 +123,18 @@ def main():
     print(f"Minimum notional: {rules['min_notional']}")
     print(f"Price precision: {rules['price_precision']}")
     print(f"Amount precision: {rules['amount_precision']}")
-    print(f"Current XAUT price: {last}")
+    print(f"Current BTC price: {last}")
 
     # Strategy signal check is deliberately read-only and uses the same signal engine.
-    df15 = get_gold_bars("15m")
-    df1h = get_gold_bars("1h")
+    df15 = get_btc_bars("15m")
+    df1h = get_btc_bars("1h")
     if len(df15) < 100 or len(df1h) < 50:
-        print("SIGNAL: unavailable — not enough Gold candles.")
+        print("SIGNAL: unavailable — not enough Bitcoin candles.")
         return
 
     sig = latest_executable_signal(df15, df1h, FRESHNESS_BARS)
     if not sig:
-        print("SIGNAL: no fresh HIGH-confidence executable Gold signal right now.")
+        print("SIGNAL: no fresh HIGH-confidence executable Bitcoin signal right now.")
         print("Feasibility cannot be calculated without an actual Entry → SL distance.")
         return
 

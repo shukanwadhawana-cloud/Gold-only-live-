@@ -1,4 +1,4 @@
-"""Gold-only live bot configuration.
+"""Bitcoin-only live bot configuration.
 
 All capital/risk values are configurable through environment variables.
 The bot never assumes that the whole wallet is available for trading.
@@ -6,7 +6,7 @@ The bot never assumes that the whole wallet is available for trading.
 import os
 from decimal import Decimal
 
-SYMBOL = "XAUTUSDT"
+SYMBOL = "BTCUSDT"
 TIMEFRAME = os.getenv("TIMEFRAME", "15m")
 HTF_TIMEFRAME = os.getenv("HTF_TIMEFRAME", "1h")
 
@@ -32,17 +32,17 @@ ALLOW_LIVE_ORDERS = os.getenv("ALLOW_LIVE_ORDERS", "false").lower() == "true"
 
 BINANCE_API_KEY = os.getenv("BINANCE_API_KEY", "")
 BINANCE_API_SECRET = os.getenv("BINANCE_API_SECRET", "")
-# Hard-lock live XAUTUSDT perpetual execution to 1x.
+# Hard-lock live BTCUSDT perpetual execution to 1x.
 LEVERAGE = int(os.getenv("LEVERAGE", "1"))
 if LEVERAGE != 1:
-    raise ValueError("LEVERAGE must remain 1 for the live XAUTUSDT bot.")
+    raise ValueError("LEVERAGE must remain 1 for the live BTCUSDT bot.")
 
 DATA_LIMIT = int(os.getenv("DATA_LIMIT", "500"))
 FRESHNESS_BARS = int(os.getenv("FRESHNESS_BARS", "4"))
-STATE_FILE = os.getenv("STATE_FILE", "gold_state.json")
-AUDIT_FILE = os.getenv("AUDIT_FILE", "audit.jsonl")
+STATE_FILE = os.getenv("STATE_FILE", "bitcoin_state.json")
+AUDIT_FILE = os.getenv("AUDIT_FILE", "bitcoin_audit.jsonl")
 
-# We intentionally do not accept a symbol from the environment: Gold-only means XAUTUSDT only.
+# We intentionally do not accept a symbol from the environment: Bitcoin-only means BTCUSDT only.
 ALLOWED_SYMBOLS = {SYMBOL}
 
 
