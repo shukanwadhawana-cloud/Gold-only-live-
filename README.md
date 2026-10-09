@@ -8,7 +8,7 @@ Bitcoin-only execution bot adapted from the existing SMC paper-trading strategy.
 - **Strategy:** 15m BOS/CHoCH, ATR-adjusted order block, 1H+4H EMA50 alignment, session filter, HIGH-confidence gate.
 - **Risk geometry retained:** strategy SL, 4R take-profit, progressive 0.6R trailing.
 - **Capital cap:** 100 USDT maximum allocation at 1×.
-- **Risk budget:** maximum 2 USDT and 10% of active capital cap per trade; quantity sizing reserves estimated round-trip taker fees and slippage inside that budget.
+- **Risk budget:** maximum 2 USDT and 10% of active capital cap per trade; quantity sizing reserves estimated round-trip taker fees, slippage, and a configurable funding-cost allowance inside that budget.
 - **Leverage:** hard-locked to 1×.
 - **Position count:** one Bitcoin position maximum.
 - **Live orders:** disabled by default. Both `LIVE_TRADING=true` and `ALLOW_LIVE_ORDERS=true` are required by the execution layer, and the normal entry point forces paper-only mode.
@@ -41,4 +41,4 @@ Gold state/audit files are deliberately not reused or migrated, so historical Go
 Vercel is not the continuous worker; it exposes a read-only health endpoint. GitHub Actions is CI/preflight only, not an unbounded trading worker. Continuous execution requires a verified persistent worker.
 
 ## Safety status
-This conversion does **not** enable live orders or submit any orders. The existing paper-only entry point remains fail-closed. Run CI, then execute read-only account preflight from an eligible environment. Live execution remains disabled. Before any activation, use read-only account preflight to verify current exchange filters, the account's actual fee tier, funding/fees, minimum quantity/notional, stop and take-profit acceptance, and runtime reconciliation. Do not bypass risk or minimum-order guards.
+This conversion does **not** enable live orders or submit any orders. The existing paper-only entry point remains fail-closed. Run CI, then execute read-only account preflight from an eligible environment. Live execution remains disabled. Before any activation, use read-only account preflight to verify current exchange filters, the account's actual fee tier and funding rate/interval, minimum quantity/notional, stop and take-profit acceptance, and runtime reconciliation. Funding is estimated using a configurable 8-hour reserve and holding horizon; actual funding rates can differ. Do not bypass risk or minimum-order guards.
