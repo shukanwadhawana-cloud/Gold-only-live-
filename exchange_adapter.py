@@ -151,6 +151,7 @@ def size_for_risk(ex, direction, entry, sl, balance):
         "estimated_stop_loss_usdt": estimated_stop_loss,
         "estimated_round_trip_fee_usdt": estimated_round_trip_fee,
         "estimated_round_trip_slippage_usdt": estimated_round_trip_slippage,
+        "estimated_funding_cost_usdt": estimated_funding_cost,
         "estimated_total_risk_usdt": estimated_total_risk,
         "risk_limit_pass": estimated_total_risk <= risk_budget_usdt,
     }
