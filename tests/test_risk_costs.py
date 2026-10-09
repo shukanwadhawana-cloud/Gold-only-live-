@@ -27,7 +27,7 @@ class FakeExchange:
         return {self.market["symbol"]: self.market}
 
     def amount_to_precision(self, symbol, amount):
-        return f"{amount:.3f}"
+        return str(Decimal(str(amount)).quantize(Decimal("0.001"), rounding="ROUND_FLOOR"))
 
 
 def test_btc_sizing_includes_fee_slippage_and_funding_inside_two_dollar_risk():
