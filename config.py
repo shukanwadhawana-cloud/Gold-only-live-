@@ -20,10 +20,13 @@ REQUIRE_HTF = True
 
 # Hard capital ceiling. This is NOT leverage and is NOT the order size.
 # It limits how much account equity the bot may treat as its trading allocation.
-CAPITAL_CAP_USDT = Decimal(os.getenv("CAPITAL_CAP_USDT", "20"))
+CAPITAL_CAP_USDT = Decimal(os.getenv("CAPITAL_CAP_USDT", "100"))
 # Maximum fraction of the active capital cap risked on one trade.
 RISK_FRACTION = Decimal(os.getenv("RISK_FRACTION", "0.10"))
 MAX_RISK_USDT = Decimal(os.getenv("MAX_RISK_USDT", "2"))
+# Fee/slippage estimates reserve room inside the $2 total risk budget.
+ESTIMATED_TAKER_FEE_RATE = Decimal(os.getenv("ESTIMATED_TAKER_FEE_RATE", "0.0005"))
+ESTIMATED_SLIPPAGE_RATE = Decimal(os.getenv("ESTIMATED_SLIPPAGE_RATE", "0.0002"))
 MAX_OPEN_POSITIONS = int(os.getenv("MAX_OPEN_POSITIONS", "1"))
 
 # Safety defaults: real trading is explicitly OFF until all preflight checks pass.
