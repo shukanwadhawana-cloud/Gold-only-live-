@@ -83,6 +83,27 @@ def _floor_amount(ex, symbol, amount):
         return Decimal(str(amount))
 
 
+def minimum_notional(m):
+    """Return the strictest exchange minimum from CCXT limits and Binance filters."""
+    limits = m.get("limits") or {}
+    cost_min = (limits.get("cost") or {}).get("min")
+    minimum = Decimal(str(cost_min)) if cost_min not in (None, "") else Decimal("0")
+    info = m.get("info") or {}
+    for rule in info.get("filters") or []:
+        if str(rule.get("filterType", "")).upper() not in {"MIN_NOTIONAL", "NOTIONAL"}:
+            continue
+        raw = rule.get("notional")
+        if raw is None:
+            raw = rule.get("minNotional")
+        if raw is None:
+            continue
+        try:
+            minimum = max(minimum, Decimal(str(raw)))
+        except Exception:
+            continue
+    return minimum
+
+
 def size_for_risk(ex, direction, entry, sl, balance):
     """Calculate quantity using the exchange's actual contract size and limits."""
     m = btc_market(ex)
@@ -102,9 +123,8 @@ def size_for_risk(ex, direction, entry, sl, balance):
 
     limits = m.get("limits") or {}
     amount_min = ((limits.get("amount") or {}).get("min"))
-    cost_min = ((limits.get("cost") or {}).get("min"))
     min_qty = Decimal(str(amount_min)) if amount_min else Decimal("0")
-    min_cost = Decimal(str(cost_min)) if cost_min else Decimal("0")
+    min_cost = minimum_notional(m)
     notional = qty * Decimal(str(entry)) * contract_size
 
     return {
