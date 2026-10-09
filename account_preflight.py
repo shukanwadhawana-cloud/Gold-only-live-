@@ -37,12 +37,24 @@ def market_rules(m):
     amount_precision = precision.get("amount")
     price_precision = precision.get("price")
     contract_size = d(m.get("contractSize"), Decimal("1"))
+    amount_step = Decimal("0")
+    price_tick = Decimal("0")
+    for rule in ((m.get("info") or {}).get("filters") or []):
+        kind = str(rule.get("filterType", "")).upper()
+        if kind in {"LOT_SIZE", "MARKET_LOT_SIZE"} and rule.get("stepSize"):
+            step = d(rule.get("stepSize"))
+            if step > amount_step:
+                amount_step = step
+        if kind == "PRICE_FILTER" and rule.get("tickSize"):
+            price_tick = d(rule.get("tickSize"))
     return {
         "min_qty": amount_min,
         "min_notional": cost_min,
         "amount_precision": amount_precision,
         "price_precision": price_precision,
         "contract_size": contract_size,
+        "amount_step": amount_step,
+        "price_tick": price_tick,
     }
 
 
@@ -64,14 +76,8 @@ def feasibility(balance, entry, sl, rules):
         capital_qty = active / (entry * rules["contract_size"])
         raw_qty = min(risk_qty, capital_qty)
 
-        # Let CCXT apply exchange precision/step rules where possible.
-        qty = raw_qty
-        if rules["amount_precision"] is not None:
-            # CCXT precision may be decimal places for Binance.
-            try:
-                qty = d(str(raw_qty))
-            except Exception:
-                pass
+        # Round DOWN to the actual exchange step size; never round risk upward.
+        qty = floor_to_step(raw_qty, rules.get("amount_step", Decimal("0")))
 
         notional = qty * entry * rules["contract_size"]
         meets_qty = qty >= rules["min_qty"]
@@ -108,16 +114,7 @@ def main():
     print("Order modification/cancellation: NEVER")
     print("Credentials: read from environment only; never printed")
 
-    if not os.getenv("BINANCE_API_KEY") or not os.getenv("BINANCE_API_SECRET"):
-        raise SystemExit("PREFLIGHT_BLOCKED: BINANCE_API_KEY/BINANCE_API_SECRET are not configured.")
-
     ex = make_exchange()
-
-    # Authentication/account permission check.
-    try:
-        balance = balance_usdt(ex)
-    except Exception as exc:
-        raise SystemExit(f"ACCOUNT_CHECK_FAILED: {type(exc).__name__}: {exc}")
 
     try:
         market = btc_market(ex)
@@ -129,7 +126,6 @@ def main():
     ticker = ex.fetch_ticker(symbol)
     last = d(ticker.get("last"))
 
-    print(f"Account USDT total: {balance}")
     print(f"BTC exchange id: {market.get('id')}")
     print(f"BTC CCXT symbol: {symbol}")
     print(f"Active: {market.get('active')}")
@@ -139,7 +135,62 @@ def main():
     print(f"Minimum notional: {rules['min_notional']}")
     print(f"Price precision: {rules['price_precision']}")
     print(f"Amount precision: {rules['amount_precision']}")
+    print(f"Amount step size: {rules['amount_step']}")
+    print(f"Price tick size: {rules['price_tick']}")
     print(f"Current BTC price: {last}")
+    print(f"Market order support advertised: {bool((ex.has or {}).get('createOrder'))}")
+    try:
+        funding = ex.fetch_funding_rate(symbol)
+        current_funding = d(funding.get("fundingRate"))
+        interval_hours = d(funding.get("intervalHours") or (market.get("info") or {}).get("fundingIntervalHours") or 8, Decimal("8"))
+        if interval_hours <= 0:
+            raise SystemExit("PREFLIGHT_BLOCKED: exchange returned an invalid funding interval.")
+        normalized_funding_8h = abs(current_funding) * Decimal("8") / interval_hours
+        print(f"Current funding rate per {interval_hours}h: {current_funding}")
+        print(f"Normalized funding rate per 8h: {normalized_funding_8h}")
+        print(f"Funding rate reserve per 8h: {ESTIMATED_FUNDING_RATE_PER_8H}")
+        if normalized_funding_8h > ESTIMATED_FUNDING_RATE_PER_8H:
+            raise SystemExit("PREFLIGHT_BLOCKED: current funding rate exceeds configured funding reserve; update reserve and rerun.")
+    except SystemExit:
+        raise
+    except Exception as exc:
+        print(f"Funding-rate check unavailable: {type(exc).__name__}: {exc}")
+        raise SystemExit("PREFLIGHT_BLOCKED: could not verify current funding rate.")
+
+    if not os.getenv("BINANCE_API_KEY") or not os.getenv("BINANCE_API_SECRET"):
+        print("\nPREFLIGHT BLOCKED: public market checks completed, but authenticated account balance, actual taker fee tier, open positions/orders, and private order permissions cannot be verified without API credentials in the worker environment.")
+        raise SystemExit(2)
+
+    # Private endpoints are read-only. API credentials must have read permissions;
+    # trading permissions are neither required nor used by this preflight.
+    try:
+        balance = balance_usdt(ex)
+        fee_info = ex.fetch_trading_fee(symbol)
+        actual_taker_fee = d(fee_info.get("taker"), Decimal("-1"))
+        if actual_taker_fee < 0:
+            raise RuntimeError("Binance did not return a usable taker fee.")
+        print(f"Account USDT total: {balance}")
+        print(f"Account taker fee rate: {actual_taker_fee}")
+        print(f"Configured taker fee reserve per side: {ESTIMATED_TAKER_FEE_RATE}")
+        if actual_taker_fee > ESTIMATED_TAKER_FEE_RATE:
+            raise SystemExit("PREFLIGHT_BLOCKED: account taker fee exceeds configured fee reserve; increase the reserve and rerun.")
+        positions = ex.fetch_positions([symbol])
+        open_positions = []
+        for position in positions:
+            contracts = position.get("contracts")
+            if contracts is None:
+                contracts = (position.get("info") or {}).get("positionAmt", 0)
+            if abs(d(contracts)) > 0:
+                open_positions.append(position)
+        open_orders = ex.fetch_open_orders(symbol)
+        print(f"Existing BTC positions: {len(open_positions)}")
+        print(f"Existing BTC open orders: {len(open_orders)}")
+        if open_positions or open_orders:
+            raise SystemExit("PREFLIGHT_BLOCKED: existing BTC position or open order found; reconcile it before activation.")
+    except SystemExit:
+        raise
+    except Exception as exc:
+        raise SystemExit(f"PRIVATE_READ_ONLY_CHECK_FAILED: {type(exc).__name__}: {exc}")
 
     # Strategy signal check is deliberately read-only and uses the same signal engine.
     df15 = get_btc_bars("15m")
