@@ -58,7 +58,7 @@ def test_get_bars_uses_public_bingx_and_returns_utc_ohlcv():
 def test_get_bars_rejects_non_bitcoin_before_network_call():
     with patch.object(market_data, "make_market_data_exchange") as factory:
         with pytest.raises(ValueError, match="Bitcoin-only"):
-            market_data.get_bars("ETHUSDT")
+            market_data.get_bars("NOTBTC")
         factory.assert_not_called()
 
 
