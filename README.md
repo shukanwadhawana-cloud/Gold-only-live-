@@ -4,7 +4,8 @@ Bitcoin-only execution bot adapted from the existing SMC paper-trading strategy.
 
 ## Current conversion
 - **Asset:** BTCUSDT only. No Gold/XAUT, ETH, XRP, LINK, AAVE, SOL, AVAX, or BNB execution paths.
-- **Exchange:** Binance USDⓈ-M BTCUSDT perpetual, discovered from exchange metadata at runtime.
+- **Paper-runtime market data:** public BingX BTC/USDT USDT-settled perpetual candles, fetched without credentials. This keeps the Voroa paper worker independent of the Binance API restriction seen in Railway logs.
+- **Execution/preflight adapter:** Binance USDⓈ-M BTCUSDT perpetual remains configured for read-only preflight only; this change does not enable Binance orders or bypass regional restrictions.
 - **Strategy:** 15m BOS/CHoCH, ATR-adjusted order block, 1H+4H EMA50 alignment, session filter, HIGH-confidence gate.
 - **Risk geometry retained:** strategy SL, 4R take-profit, progressive 0.6R trailing.
 - **Capital cap:** 100 USDT maximum allocation at 1×.
@@ -27,7 +28,7 @@ Gold state/audit files are deliberately not reused or migrated, so historical Go
 `preflight.py` and `account_preflight.py` are read-only. They discover the actual BTCUSDT contract, account USDT balance, exchange minimums/precision, current signal, quantity and estimated 1R. They must refuse a trade when configured capital/risk is below exchange minimums. Credentials are read only from environment variables and must never be committed.
 
 ## Live execution architecture
-1. Fetch closed BTCUSDT candles.
+1. Fetch closed BTCUSDT perpetual candles from the public BingX market-data adapter in paper mode.
 2. Generate the strategy signal using the existing strategy logic.
 3. Size quantity from stop distance and configured risk budget, bounded by the 100 USDT allocation.
 4. Refuse orders if exchange minimum quantity/notional rules are not met.
@@ -39,6 +40,10 @@ Gold state/audit files are deliberately not reused or migrated, so historical Go
 
 ## Runtime/deployment
 Vercel is not the continuous worker; it exposes a read-only health endpoint. GitHub Actions is CI/preflight only, not an unbounded trading worker. Continuous execution requires a verified persistent worker.
+
+## Market-data incident fix
+
+The Voroa paper worker uses `market_data.py`, which is intentionally separate from the Binance account/execution adapter. Paper candles now come from the BingX BTC/USDT perpetual market. If the feed cannot find the expected active USDT-settled contract or returns no candles, the worker fails closed rather than inventing prices. Unit tests cover symbol restriction, contract selection, UTC candle parsing, and empty-feed handling. This does not fix or circumvent Binance account/API eligibility; Binance preflight and any future execution must remain subject to the exchange's supported access rules.
 
 ## Safety status
 This conversion does **not** enable live orders or submit any orders. The existing paper-only entry point remains fail-closed. Run CI, then execute read-only account preflight from an eligible environment. Live execution remains disabled. Before any activation, use read-only account preflight to verify current exchange filters, the account's actual fee tier and funding rate/interval, minimum quantity/notional, stop and take-profit acceptance, and runtime reconciliation. Funding is estimated using a configurable 8-hour reserve and holding horizon; actual funding rates can differ. Do not bypass risk or minimum-order guards.
