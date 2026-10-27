@@ -7,7 +7,7 @@ LIVE_TRADING and ALLOW_LIVE_ORDERS are true.
 from decimal import Decimal
 import os
 import ccxt
-from config import (SYMBOL, CAPITAL_CAP_USDT, risk_budget, LEVERAGE, ESTIMATED_TAKER_FEE_RATE, ESTIMATED_SLIPPAGE_RATE, ESTIMATED_FUNDING_RATE_PER_8H, ESTIMATED_HOLD_HOURS)
+from config import (SYMBOL, CAPITAL_CAP_USDT, risk_budget, LEVERAGE, ESTIMATED_TAKER_FEE_RATE, ESTIMATED_SLIPPAGE_RATE, ESTIMATED_SPREAD_RATE, ESTIMATED_FUNDING_RATE_PER_8H, ESTIMATED_HOLD_HOURS)
 
 
 def make_exchange():
@@ -114,8 +114,13 @@ def size_for_risk(ex, direction, entry, sl, balance):
 
     contract_size = Decimal(str(m.get("contractSize") or 1))
     risk_per_contract = price_risk * contract_size
-    # Reserve round-trip taker fees and slippage within the same $2 risk cap.
-    round_trip_cost_rate = Decimal("2") * (ESTIMATED_TAKER_FEE_RATE + ESTIMATED_SLIPPAGE_RATE)
+    # Reserve all expected costs INSIDE the same risk cap: both-side fees,
+    # adverse slippage, spread on each side, and a holding-period funding reserve.
+    funding_rate = ESTIMATED_FUNDING_RATE_PER_8H * ESTIMATED_HOLD_HOURS / Decimal("8")
+    round_trip_cost_rate = (
+        Decimal("2") * (ESTIMATED_TAKER_FEE_RATE + ESTIMATED_SLIPPAGE_RATE + ESTIMATED_SPREAD_RATE / Decimal("2"))
+        + funding_rate
+    )
     estimated_cost_per_contract = Decimal(str(entry)) * contract_size * round_trip_cost_rate
     total_risk_per_contract = risk_per_contract + estimated_cost_per_contract
     raw_qty = risk_budget_usdt / total_risk_per_contract
@@ -133,8 +138,9 @@ def size_for_risk(ex, direction, entry, sl, balance):
     estimated_stop_loss = qty * risk_per_contract
     estimated_round_trip_fee = notional * Decimal("2") * ESTIMATED_TAKER_FEE_RATE
     estimated_round_trip_slippage = notional * Decimal("2") * ESTIMATED_SLIPPAGE_RATE
+    estimated_spread_cost = notional * ESTIMATED_SPREAD_RATE
     estimated_funding_cost = notional * ESTIMATED_FUNDING_RATE_PER_8H * ESTIMATED_HOLD_HOURS / Decimal("8")
-    estimated_total_risk = estimated_stop_loss + estimated_round_trip_fee + estimated_round_trip_slippage + estimated_funding_cost
+    estimated_total_risk = estimated_stop_loss + estimated_round_trip_fee + estimated_round_trip_slippage + estimated_spread_cost + estimated_funding_cost
 
     return {
         "symbol": m["symbol"],
@@ -152,6 +158,7 @@ def size_for_risk(ex, direction, entry, sl, balance):
         "estimated_stop_loss_usdt": estimated_stop_loss,
         "estimated_round_trip_fee_usdt": estimated_round_trip_fee,
         "estimated_round_trip_slippage_usdt": estimated_round_trip_slippage,
+        "estimated_spread_cost_usdt": estimated_spread_cost,
         "estimated_funding_cost_usdt": estimated_funding_cost,
         "estimated_total_risk_usdt": estimated_total_risk,
         "risk_limit_pass": estimated_total_risk <= risk_budget_usdt,
