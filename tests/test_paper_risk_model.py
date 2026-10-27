@@ -68,4 +68,4 @@ def test_stop_exit_net_loss_includes_entry_exit_fees_spread_slippage_and_funding
     result = Decimal(state["realized_pnl_usdt"])
     assert result < 0
     assert abs(result) <= budget
-    assert Decimal(state["open_position"] is None and "0" or "1") == 0
+    assert state["open_position"] is None
