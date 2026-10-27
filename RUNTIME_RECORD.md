@@ -4,7 +4,7 @@
 - Repository: `shukanwadhawana-cloud/Gold-only-live-`
 - Target instrument: BTCUSDT perpetual only.
 - Capital cap updated: 100 USDT maximum allocation at 1×.
-- Maximum risk budget: 2 USDT and 10% of active cap; estimated round-trip taker fees, slippage, and funding reserve are included in sizing.
+- Maximum risk budget: 2 USDT and 10% of active cap; entry/exit taker fees, adverse slippage, spread allowance, and funding reserve are included in all-in stop-risk sizing. Paper fills are adverse at entry/exit, with immediate negative mark-to-market and net liquidation estimate reported.
 - Leverage preserved: 1×.
 - Live orders: disabled by default; normal entry point forces paper-only mode.
 - No live order has been submitted by this conversion.
@@ -13,7 +13,7 @@
 The former Gold runtime state and audit files are not reused. Bitcoin paper state is written to `bitcoin_paper_state.json` and `bitcoin_paper_audit.jsonl`. Historical Gold results must not be presented as Bitcoin results.
 
 ## Live feasibility blocker
-Binance's published 2026-04-14 BTCUSDT USDⓈ-M perpetual minimum-notional change set the minimum to 50 USDT. The bot must use current exchange metadata at runtime. The 100 USDT allocation can satisfy that minimum in principle, but a trade must still be rejected if stop-loss risk plus estimated fees, slippage, and funding reserve exceeds the 2 USDT risk budget.
+Binance's published 2026-04-14 BTCUSDT USDⓈ-M perpetual minimum-notional change set the minimum to 50 USDT. The bot must use current exchange metadata at runtime. The 100 USDT allocation can satisfy that minimum in principle, but a trade must still be rejected if stop-loss risk plus estimated fees, slippage, spread, and funding reserve exceeds the 2 USDT all-in risk budget.
 
 ## Required verification
 1. CI and unit tests pass.
