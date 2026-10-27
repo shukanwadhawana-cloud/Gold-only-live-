@@ -40,11 +40,13 @@ def test_btc_sizing_includes_fee_slippage_and_funding_inside_two_dollar_risk():
     assert sizing["notional"] == Decimal("100.000")
     assert sizing["estimated_round_trip_fee_usdt"] > 0
     assert sizing["estimated_round_trip_slippage_usdt"] > 0
+    assert sizing["estimated_spread_cost_usdt"] > 0
     assert sizing["estimated_funding_cost_usdt"] > 0
     assert sizing["estimated_total_risk_usdt"] == (
         sizing["estimated_stop_loss_usdt"]
         + sizing["estimated_round_trip_fee_usdt"]
         + sizing["estimated_round_trip_slippage_usdt"]
+        + sizing["estimated_spread_cost_usdt"]
         + sizing["estimated_funding_cost_usdt"]
     )
     assert sizing["estimated_total_risk_usdt"] <= sizing["risk_budget_usdt"]

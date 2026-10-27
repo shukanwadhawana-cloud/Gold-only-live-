@@ -9,8 +9,8 @@ import os
 from decimal import Decimal, ROUND_FLOOR, ROUND_CEILING
 from exchange_adapter import make_exchange, btc_market, balance_usdt, size_for_risk, set_one_x_leverage
 from config import (ALLOWED_SYMBOLS, MAX_OPEN_POSITIONS, STATE_FILE, RR_RATIO,
-                    ESTIMATED_TAKER_FEE_RATE, ESTIMATED_SLIPPAGE_RATE,
-                    ESTIMATED_FUNDING_RATE_PER_8H, ESTIMATED_HOLD_HOURS)
+                    ESTIMATED_TAKER_FEE_RATE, ESTIMATED_SLIPPAGE_RATE, ESTIMATED_SPREAD_RATE,
+                    ESTIMATED_FUNDING_RATE_PER_8H, ESTIMATED_HOLD_HOURS, risk_budget)
 
 
 def _round_to_tick(price, tick, rounding):
@@ -204,6 +204,62 @@ class LiveExecutor:
             if not flat_confirmed:
                 detail += " | position may remain open; any installed protective orders were retained and state persisted for reconciliation."
             raise RuntimeError(detail) from exc
+
+        # Re-check risk using the ACTUAL fill and rounded protective stop. If the
+        # fill slipped beyond the pre-trade estimate, close immediately rather than
+        # silently exceeding the configured all-in risk budget.
+        contract_size = Decimal(str(self.market.get('contractSize') or 1))
+        notional_basis = filled * contract_size
+        actual_stop_loss = abs(avg - actual_sl) * notional_basis
+        actual_round_trip_fees = (abs(avg) + abs(actual_sl)) * notional_basis * ESTIMATED_TAKER_FEE_RATE
+        actual_slippage_allowance = (abs(avg) + abs(actual_sl)) * notional_basis * ESTIMATED_SLIPPAGE_RATE
+        actual_spread_allowance = (abs(avg) + abs(actual_sl)) * notional_basis * ESTIMATED_SPREAD_RATE / Decimal("2")
+        actual_funding_reserve = abs(avg) * notional_basis * ESTIMATED_FUNDING_RATE_PER_8H * ESTIMATED_HOLD_HOURS / Decimal("8")
+        actual_total_risk = actual_stop_loss + actual_round_trip_fees + actual_slippage_allowance + actual_spread_allowance + actual_funding_reserve
+        actual_budget = risk_budget(balance)
+        if actual_total_risk > actual_budget:
+            close_error = None
+            try:
+                self.ex.create_order(
+                    self.market['symbol'], 'market', close_side, float(filled), None, {'reduceOnly': True}
+                )
+            except Exception as exc:
+                close_error = exc
+            try:
+                flat_confirmed = not self._open_position_exists()
+            except Exception:
+                flat_confirmed = False
+            if flat_confirmed:
+                for protective in (sl_order, tp_order):
+                    if protective and protective.get('id'):
+                        try:
+                            self.ex.cancel_order(protective['id'], self.market['symbol'])
+                        except Exception:
+                            pass
+            else:
+                emergency_state = {
+                    'symbol': self.market['id'], 'ccxt_symbol': self.market['symbol'],
+                    'direction': signal['type'], 'entry': str(avg), 'sl': str(actual_sl),
+                    'tp': str(actual_tp), 'qty': str(filled), 'initial_r': str(initial_r),
+                    'locked_level_r': '0', 'sl_order_id': sl_order.get('id'),
+                    'tp_order_id': tp_order.get('id'), 'entry_order_id': order.get('id'),
+                    'actual_total_risk_usdt': str(actual_total_risk),
+                    'risk_budget_usdt': str(actual_budget),
+                    'risk_breach_close_error': str(close_error) if close_error else None,
+                }
+                tmp = STATE_FILE + '.tmp'
+                with open(tmp, 'w') as f:
+                    json.dump(emergency_state, f, indent=2)
+                os.replace(tmp, STATE_FILE)
+            detail = (
+                f"Actual fill/stop all-in risk {actual_total_risk:.6f} USDT exceeds "
+                f"budget {actual_budget:.6f} USDT; emergency close attempted."
+            )
+            if close_error:
+                detail += f" Close error: {close_error}"
+            if not flat_confirmed:
+                detail += " Position is not confirmed flat; protective orders retained and state persisted."
+            raise RuntimeError(detail)
 
         state = {
             'symbol': self.market['id'], 'ccxt_symbol': self.market['symbol'], 'direction': signal['type'],

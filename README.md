@@ -9,7 +9,7 @@ Bitcoin-only execution bot adapted from the existing SMC paper-trading strategy.
 - **Strategy:** 15m BOS/CHoCH, ATR-adjusted order block, 1H+4H EMA50 alignment, session filter, HIGH-confidence gate.
 - **Risk geometry retained:** strategy SL, 4R take-profit, progressive 0.6R trailing.
 - **Capital cap:** 100 USDT maximum allocation at 1×.
-- **Risk budget:** maximum 2 USDT and 10% of active capital cap per trade; quantity sizing reserves estimated round-trip taker fees, slippage, and a configurable funding-cost allowance inside that budget.
+- **Risk budget:** maximum 2 USDT and 10% of active capital cap per trade; quantity sizing reserves entry/exit taker fees, adverse slippage on both fills, a configurable spread allowance, and a funding-cost allowance inside that budget. Paper fills are adverse by the configured slippage plus half-spread per side; quantity is bounded by both all-in stop risk and the active capital cap. The paper ledger reports estimated immediate negative entry mark-to-market separately from the eventual realized trade result.
 - **Leverage:** hard-locked to 1×.
 - **Position count:** one Bitcoin position maximum.
 - **Live orders:** disabled by default. Both `LIVE_TRADING=true` and `ALLOW_LIVE_ORDERS=true` are required by the execution layer, and the normal entry point forces paper-only mode.

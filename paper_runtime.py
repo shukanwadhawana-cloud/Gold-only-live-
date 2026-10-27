@@ -10,7 +10,7 @@ import os
 import time
 from decimal import Decimal, ROUND_FLOOR
 
-from config import CAPITAL_CAP_USDT, MAX_RISK_USDT, RISK_FRACTION, FRESHNESS_BARS, TRAIL_STEP_R
+from config import (CAPITAL_CAP_USDT, MAX_RISK_USDT, RISK_FRACTION, FRESHNESS_BARS, TRAIL_STEP_R, RR_RATIO, ESTIMATED_TAKER_FEE_RATE, ESTIMATED_SLIPPAGE_RATE, ESTIMATED_SPREAD_RATE, ESTIMATED_FUNDING_RATE_PER_8H, ESTIMATED_HOLD_HOURS)
 from market_data import get_btc_bars
 from paper_state import audit, load_state, persistence_info, reconcile_trade_stats, save_state
 from strategy import latest_executable_signal
@@ -40,27 +40,70 @@ def d(value) -> Decimal:
     return Decimal(str(value))
 
 
-def risk_budget() -> Decimal:
-    return min(MAX_RISK_USDT, CAPITAL_CAP_USDT * RISK_FRACTION)
+def risk_budget(balance_usdt: Decimal | None = None) -> Decimal:
+    active = min(CAPITAL_CAP_USDT, balance_usdt if balance_usdt is not None else CAPITAL_CAP_USDT)
+    return max(ZERO, min(MAX_RISK_USDT, active * RISK_FRACTION))
 
 
-def estimated_trade_cost() -> Decimal:
-    # Round-trip fee + slippage allowance. This is charged against the
-    # configured gross risk budget rather than added on top of it.
-    return max(ZERO, d(os.getenv("ESTIMATED_ROUND_TRIP_COST_USDT", "0")))
+def execution_friction_rate() -> Decimal:
+    # Each simulated fill pays adverse slippage plus half the quoted spread.
+    return max(ZERO, ESTIMATED_SLIPPAGE_RATE + ESTIMATED_SPREAD_RATE / Decimal("2"))
 
 
-def price_risk_budget() -> Decimal:
-    return max(ZERO, risk_budget() - estimated_trade_cost())
+def simulated_fill(reference_price: Decimal, direction: str, is_entry: bool) -> Decimal:
+    friction = execution_friction_rate()
+    # Entry moves against us; exit also moves against the position.
+    adverse_up = (direction == "BUY" and is_entry) or (direction == "SELL" and not is_entry)
+    return reference_price * (Decimal("1") + friction if adverse_up else Decimal("1") - friction)
 
 
-def paper_qty(entry: Decimal, sl: Decimal) -> Decimal:
-    risk_distance = abs(entry - sl)
-    if risk_distance <= ZERO:
+def funding_reserve(notional: Decimal) -> Decimal:
+    return notional * ESTIMATED_FUNDING_RATE_PER_8H * ESTIMATED_HOLD_HOURS / Decimal("8")
+
+
+def estimated_all_in_stop_risk(qty: Decimal, reference_entry: Decimal, sl: Decimal, direction: str) -> Decimal:
+    entry_fill = simulated_fill(reference_entry, direction, True)
+    stop_fill = simulated_fill(sl, direction, False)
+    price_loss = abs(entry_fill - stop_fill) * qty
+    entry_fee = abs(entry_fill * qty) * ESTIMATED_TAKER_FEE_RATE
+    exit_fee = abs(stop_fill * qty) * ESTIMATED_TAKER_FEE_RATE
+    return price_loss + entry_fee + exit_fee + funding_reserve(abs(entry_fill * qty))
+
+
+def mark_to_market_net_estimate(pos: dict, market_price: Decimal) -> Decimal:
+    """Conservative net liquidation estimate, including the entry's immediate loss."""
+    direction = pos["type"]
+    entry = d(pos["entry"])
+    qty = d(pos.get("qty_research", "0"))
+    gross_unrealized = ((market_price - entry) if direction == "BUY" else (entry - market_price)) * qty
+    entry_fee = d(pos.get("entry_fee_estimate_usdt", "0"))
+    estimated_exit_fee = abs(market_price * qty) * ESTIMATED_TAKER_FEE_RATE
+    funding_cost = d(pos.get("funding_reserve_usdt", "0"))
+    return gross_unrealized - entry_fee - estimated_exit_fee - funding_cost
+
+
+def paper_qty(entry: Decimal, sl: Decimal, direction: str, balance_usdt: Decimal) -> Decimal:
+    budget = risk_budget(balance_usdt)
+    if budget <= ZERO or abs(entry - sl) <= ZERO:
         return ZERO
-    # Research-mode quantity only; exchange contract size/minimums are NOT assumed.
-    # Reserve estimated costs so a stop loss remains within the gross risk budget.
-    return price_risk_budget() / risk_distance
+    entry_fill = simulated_fill(entry, direction, True)
+    stop_fill = simulated_fill(sl, direction, False)
+    per_unit_price_loss = abs(entry_fill - stop_fill)
+    per_unit_cost = (
+        abs(entry_fill) * ESTIMATED_TAKER_FEE_RATE
+        + abs(stop_fill) * ESTIMATED_TAKER_FEE_RATE
+        + abs(entry_fill) * ESTIMATED_FUNDING_RATE_PER_8H * ESTIMATED_HOLD_HOURS / Decimal("8")
+    )
+    all_in_per_unit = per_unit_price_loss + per_unit_cost
+    if all_in_per_unit <= ZERO or entry_fill <= ZERO:
+        return ZERO
+    capital_limit = max(ZERO, min(CAPITAL_CAP_USDT, balance_usdt)) / entry_fill
+    raw_qty = min(budget / all_in_per_unit, capital_limit)
+    qty = raw_qty.quantize(Decimal("0.00000001"), rounding=ROUND_FLOOR)
+    # Final defensive check after precision rounding; never enlarge to meet a minimum.
+    while qty > ZERO and estimated_all_in_stop_risk(qty, entry, sl, direction) > budget:
+        qty -= Decimal("0.00000001")
+    return max(ZERO, qty)
 
 
 def execution_direction(strategy_direction: str) -> str:
@@ -92,9 +135,15 @@ def close_position(state: dict, reason: str, exit_price: Decimal, bar_time, sign
     entry = d(pos["entry"])
     initial_r = d(pos["initial_r"])
     direction = pos["type"]
-    price_pnl_usdt = (((exit_price - entry) / initial_r) if direction == "BUY" else ((entry - exit_price) / initial_r)) * price_risk_budget()
-    pnl_usdt = price_pnl_usdt - estimated_trade_cost()
-    pnl_r = pnl_usdt / risk_budget() if risk_budget() > ZERO else ZERO
+    qty = d(pos.get("qty_research", "0"))
+    exit_fill = simulated_fill(exit_price, direction, False)
+    price_pnl_usdt = ((exit_fill - entry) if direction == "BUY" else (entry - exit_fill)) * qty
+    exit_fee = abs(exit_fill * qty) * ESTIMATED_TAKER_FEE_RATE
+    entry_fee = d(pos.get("entry_fee_estimate_usdt", "0"))
+    funding_cost = d(pos.get("funding_reserve_usdt", "0"))
+    pnl_usdt = price_pnl_usdt - entry_fee - exit_fee - funding_cost
+    budget_at_entry = d(pos.get("risk_budget_at_entry_usdt", str(risk_budget())))
+    pnl_r = pnl_usdt / budget_at_entry if budget_at_entry > ZERO else ZERO
     state["realized_pnl_usdt"] = str(d(state["realized_pnl_usdt"]) + pnl_usdt)
     state["equity_usdt"] = str(d(state["equity_usdt"]) + pnl_usdt)
     state["trades"] = int(state["trades"]) + 1
@@ -113,9 +162,10 @@ def close_position(state: dict, reason: str, exit_price: Decimal, bar_time, sign
 
     print(
         f"PAPER EXIT: strategy={pos.get('strategy_direction')} -> execution={direction} | "
-        f"trade_id={pos.get('trade_id')} | reason={reason} | entry={money(entry)} exit={money(exit_price)} | "
+        f"trade_id={pos.get('trade_id')} | reason={reason} | entry_fill={money(entry)} exit_reference={money(exit_price)} exit_fill={money(exit_fill)} | "
         f"initial_SL={money(d(pos.get('initial_sl', pos.get('sl', entry))))} "
         f"current_SL={money(d(pos.get('sl', entry)))} initial_TP={money(d(pos.get('initial_tp', pos.get('tp', entry))))} | "
+        f"qty={qty:.8f} entry_fee={entry_fee:.4f} exit_fee={exit_fee:.4f} funding_reserve={funding_cost:.4f} | "
         f"result={pnl_r:.2f}R / {pnl_usdt:.4f} USDT",
         flush=True,
     )
@@ -131,8 +181,9 @@ def run() -> None:
     print("Live orders: BLOCKED", flush=True)
     print(f"Capital cap: {CAPITAL_CAP_USDT} USDT", flush=True)
     print(f"Risk budget: min({MAX_RISK_USDT} USDT, active_capital × {RISK_FRACTION})", flush=True)
-    print(f"Estimated round-trip fee/slippage reserve: {estimated_trade_cost():.4f} USDT", flush=True)
-    print(f"Price-movement risk budget after costs: {price_risk_budget():.4f} USDT", flush=True)
+    print(f"Cost assumptions per side: taker_fee={ESTIMATED_TAKER_FEE_RATE} slippage={ESTIMATED_SLIPPAGE_RATE} spread={ESTIMATED_SPREAD_RATE}", flush=True)
+    print(f"Funding reserve: {ESTIMATED_FUNDING_RATE_PER_8H} per 8h for {ESTIMATED_HOLD_HOURS}h", flush=True)
+    print("All-in stop sizing includes stop-price slippage, spread, both-side fees and funding reserve.", flush=True)
     print(f"Poll interval: {POLL_SECONDS}s", flush=True)
     persistence = persistence_info()
     print(
@@ -251,16 +302,33 @@ def run() -> None:
             if state.get("open_position") is None and signal:
                 key = signal_key(signal)
                 if key != state.get("last_signal_key"):
-                    entry = d(signal["entry"])
+                    entry_reference = d(signal["entry"])
                     strategy_sl = d(signal["sl"])
                     strategy_tp = d(signal["tp"])
-                    sl, tp = execution_geometry(signal["type"], entry, strategy_sl, strategy_tp)
+                    direction = execution_direction(signal["type"])
+                    sl = strategy_sl
+                    entry = simulated_fill(entry_reference, direction, True)
                     initial_r = abs(entry - sl)
                     if initial_r <= ZERO:
-                        raise RuntimeError("Rejected signal with zero SL distance.")
-                    qty = paper_qty(entry, sl)
+                        raise RuntimeError("Rejected signal with zero SL distance after simulated adverse entry fill.")
+                    balance_at_entry = min(CAPITAL_CAP_USDT, d(state["equity_usdt"]))
+                    qty = paper_qty(entry_reference, sl, direction, balance_at_entry)
+                    budget_at_entry = risk_budget(balance_at_entry)
+                    all_in_stop_risk = estimated_all_in_stop_risk(qty, entry_reference, sl, direction)
+                    if qty <= ZERO or all_in_stop_risk > budget_at_entry:
+                        print(f"CYCLE {cycle}: signal rejected; all-in stop risk {all_in_stop_risk:.4f} exceeds budget {budget_at_entry:.4f} or quantity is zero.", flush=True)
+                        audit("ENTRY_REJECTED_RISK", trade_id=key, estimated_all_in_stop_risk_usdt=str(all_in_stop_risk), risk_budget_usdt=str(budget_at_entry), qty=str(qty))
+                        state["last_signal_key"] = key
+                        save_state(state)
+                        time.sleep(POLL_SECONDS)
+                        continue
+                    tp = entry + RR_RATIO * initial_r if direction == "BUY" else entry - RR_RATIO * initial_r
+                    entry_fee = abs(entry * qty) * ESTIMATED_TAKER_FEE_RATE
+                    funding_cost = funding_reserve(abs(entry * qty))
+                    immediate_entry_mark_loss = abs(entry - entry_reference) * qty + entry_fee
                     state["open_position"] = {
-                        "type": execution_direction(signal["type"]),
+                        "type": direction,
+                        "entry_reference": str(entry_reference),
                         "entry": str(entry),
                         "sl": str(sl),
                         "tp": str(tp),
@@ -268,6 +336,11 @@ def run() -> None:
                         "initial_tp": str(tp),
                         "initial_r": str(initial_r),
                         "qty_research": str(qty),
+                        "entry_fee_estimate_usdt": str(entry_fee),
+                        "funding_reserve_usdt": str(funding_cost),
+                        "risk_budget_at_entry_usdt": str(budget_at_entry),
+                        "estimated_all_in_stop_risk_usdt": str(all_in_stop_risk),
+                        "immediate_entry_mark_loss_usdt": str(immediate_entry_mark_loss),
                         "signal_time": str(signal["time"]),
                         "entry_time": str(bar_time),
                         "structure": signal["structure"],
@@ -291,9 +364,16 @@ def run() -> None:
                     save_state(state)
 
             status = "OPEN" if state.get("open_position") else "FLAT"
+            balance_equity = d(state["equity_usdt"])
+            unrealized_net = (
+                mark_to_market_net_estimate(state["open_position"], current_price)
+                if state.get("open_position") else ZERO
+            )
+            mark_equity = balance_equity + unrealized_net
             print(
                 f"CYCLE {cycle}: bar={bar_time} close={money(current_price)} | status={status} | "
-                f"equity={money(d(state['equity_usdt']))} | closed={state['trades']} "
+                f"balance={money(balance_equity)} unrealized_net_estimate={money(unrealized_net)} "
+                f"mark_equity_estimate={money(mark_equity)} | closed={state['trades']} "
                 f"wins={state['wins']} losses={state['losses']} breakeven={state.get('breakevens', 0)} "
                 f"open={1 if state.get('open_position') else 0} | "
                 f"fresh_high_signal={'YES' if signal else 'NO'}",
