@@ -70,6 +70,18 @@ def estimated_all_in_stop_risk(qty: Decimal, reference_entry: Decimal, sl: Decim
     return price_loss + entry_fee + exit_fee + funding_reserve(abs(entry_fill * qty))
 
 
+def mark_to_market_net_estimate(pos: dict, market_price: Decimal) -> Decimal:
+    """Conservative net liquidation estimate, including the entry's immediate loss."""
+    direction = pos["type"]
+    entry = d(pos["entry"])
+    qty = d(pos.get("qty_research", "0"))
+    gross_unrealized = ((market_price - entry) if direction == "BUY" else (entry - market_price)) * qty
+    entry_fee = d(pos.get("entry_fee_estimate_usdt", "0"))
+    estimated_exit_fee = abs(market_price * qty) * ESTIMATED_TAKER_FEE_RATE
+    funding_cost = d(pos.get("funding_reserve_usdt", "0"))
+    return gross_unrealized - entry_fee - estimated_exit_fee - funding_cost
+
+
 def paper_qty(entry: Decimal, sl: Decimal, direction: str, balance_usdt: Decimal) -> Decimal:
     budget = risk_budget(balance_usdt)
     if budget <= ZERO or abs(entry - sl) <= ZERO:
@@ -352,9 +364,16 @@ def run() -> None:
                     save_state(state)
 
             status = "OPEN" if state.get("open_position") else "FLAT"
+            balance_equity = d(state["equity_usdt"])
+            unrealized_net = (
+                mark_to_market_net_estimate(state["open_position"], current_price)
+                if state.get("open_position") else ZERO
+            )
+            mark_equity = balance_equity + unrealized_net
             print(
                 f"CYCLE {cycle}: bar={bar_time} close={money(current_price)} | status={status} | "
-                f"equity={money(d(state['equity_usdt']))} | closed={state['trades']} "
+                f"balance={money(balance_equity)} unrealized_net_estimate={money(unrealized_net)} "
+                f"mark_equity_estimate={money(mark_equity)} | closed={state['trades']} "
                 f"wins={state['wins']} losses={state['losses']} breakeven={state.get('breakevens', 0)} "
                 f"open={1 if state.get('open_position') else 0} | "
                 f"fresh_high_signal={'YES' if signal else 'NO'}",
