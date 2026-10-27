@@ -69,3 +69,20 @@ def test_stop_exit_net_loss_includes_entry_exit_fees_spread_slippage_and_funding
     assert result < 0
     assert abs(result) <= budget
     assert state["open_position"] is None
+
+
+def test_mark_to_market_equity_shows_negative_entry_costs_immediately():
+    reference = Decimal("100000")
+    entry = paper_runtime.simulated_fill(reference, "BUY", True)
+    qty = Decimal("0.0009")
+    pos = {
+        "type": "BUY",
+        "entry": str(entry),
+        "qty_research": str(qty),
+        "entry_fee_estimate_usdt": str(entry * qty * paper_runtime.ESTIMATED_TAKER_FEE_RATE),
+        "funding_reserve_usdt": str(paper_runtime.funding_reserve(entry * qty)),
+    }
+
+    net_estimate = paper_runtime.mark_to_market_net_estimate(pos, reference)
+
+    assert net_estimate < 0
